@@ -8,7 +8,11 @@ export default function HomePage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+
   const [timeLeft, setTimeLeft] = useState("");
+  const [email, setEmail] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
 
   useEffect(() => {
     const launchDate = new Date("2026-04-01T12:00:00");
@@ -67,14 +71,48 @@ export default function HomePage() {
     }
   }
 
+  async function handleWaitlistSignup() {
+    setEmailMsg("");
+
+    if (!email.trim()) {
+      setEmailMsg("Adj meg egy email címet.");
+      return;
+    }
+
+    setEmailLoading(true);
+
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (res.ok) {
+        setEmailMsg("Feliratkozva 🚀");
+        setEmail("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setEmailMsg(data?.error || "Hiba történt a feliratkozásnál.");
+      }
+    } catch {
+      setEmailMsg("Hiba történt a feliratkozásnál.");
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
   return (
     <main
       className="relative min-h-screen overflow-hidden bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/landing-bg.png')" }}
     >
-      <div className="absolute inset-0 bg-black/50" />
+      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/70" />
 
-      {/* Felső sáv */}
+      {/* Saját landing header */}
       <div className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
         <div className="text-3xl font-extrabold tracking-tight">
           <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent">
@@ -93,8 +131,8 @@ export default function HomePage() {
 
       {/* Login panel */}
       {showLogin && (
-        <div className="relative z-10 mx-auto mt-2 flex max-w-7xl justify-end px-6">
-          <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-black/35 p-5 text-white shadow-2xl backdrop-blur-md">
+        <div className="relative z-20 mx-auto mt-2 flex max-w-7xl justify-end px-6">
+          <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-black/45 p-5 text-white shadow-2xl backdrop-blur-md">
             <h2 className="mb-4 text-lg font-semibold">Belépés</h2>
 
             <form onSubmit={handleLogin} className="space-y-3">
@@ -134,8 +172,8 @@ export default function HomePage() {
       )}
 
       {/* Hero */}
-      <section className="relative z-10 flex min-h-[72vh] items-center justify-center px-6 text-center">
-        <div className="max-w-4xl">
+      <section className="relative z-10 flex min-h-[78vh] items-center justify-center px-6 py-10 text-center">
+        <div className="w-full max-w-5xl rounded-[32px] border border-white/15 bg-black/35 px-6 py-10 shadow-2xl backdrop-blur-md sm:px-10 sm:py-14">
           <div className="mb-4 inline-block rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur">
             A licitálás új korszaka
           </div>
@@ -148,53 +186,68 @@ export default function HomePage() {
             Indulás:
           </p>
 
-          <div className="mt-3 text-3xl font-bold text-white sm:text-4xl">{timeLeft}</div>
+          <div className="mt-3 text-3xl font-bold text-white sm:text-5xl">{timeLeft}</div>
 
-          <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/75 sm:text-base">
+          <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/85 sm:text-base">
             A Licitera hamarosan élesben is elindul. Addig a platform jelenleg zárt tesztelés alatt áll.
           </p>
 
-          <div className="mt-10 flex justify-center">
-            <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
+          {/* Waitlist block */}
+          <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-white/20 bg-white/12 p-4 shadow-xl backdrop-blur-md sm:p-5">
+            <p className="mb-3 text-sm font-medium text-white/90">
+              Kérj értesítést az indulásról
+            </p>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
               <input
                 placeholder="Email címed az indulásról értesítéshez"
-                className="flex-1 rounded-xl px-4 py-3 text-black"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="flex-1 rounded-xl border border-white/20 bg-white px-4 py-3 text-black outline-none placeholder:text-gray-500"
               />
 
-              <button className="rounded-xl bg-gradient-to-r from-blue-500 to-fuchsia-500 px-6 py-3 font-semibold text-white">
-                Értesítést kérek
+              <button
+                onClick={handleWaitlistSignup}
+                disabled={emailLoading}
+                className="rounded-xl bg-gradient-to-r from-blue-500 to-fuchsia-500 px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+              >
+                {emailLoading ? "Küldés..." : "Értesítést kérek"}
               </button>
             </div>
+
+            {emailMsg && (
+              <p className="mt-3 text-sm text-white">{emailMsg}</p>
+            )}
           </div>
         </div>
       </section>
 
       {/* Hogyan működik */}
-      <section className="relative z-10 px-6 pb-20 text-white text-center">
-        <div className="mx-auto max-w-5xl rounded-3xl border border-white/15 bg-white/10 p-8 backdrop-blur-md">
+      <section className="relative z-10 px-6 pb-20 text-center text-white">
+        <div className="mx-auto max-w-5xl rounded-3xl border border-white/15 bg-black/30 p-8 backdrop-blur-md">
           <h2 className="mb-10 text-3xl font-bold">Hogyan működik?</h2>
 
           <div className="grid gap-8 md:grid-cols-3">
-            <div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="mb-3 text-4xl">📦</div>
               <h3 className="mb-2 font-semibold">Tedd fel</h3>
-              <p className="text-sm opacity-80">
+              <p className="text-sm opacity-85">
                 Töltsd fel a terméked és indíts aukciót.
               </p>
             </div>
 
-            <div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="mb-3 text-4xl">🔥</div>
               <h3 className="mb-2 font-semibold">Licitek</h3>
-              <p className="text-sm opacity-80">
+              <p className="text-sm opacity-85">
                 A vevők egymásra licitálnak.
               </p>
             </div>
 
-            <div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="mb-3 text-4xl">🏆</div>
               <h3 className="mb-2 font-semibold">Nyertes</h3>
-              <p className="text-sm opacity-80">
+              <p className="text-sm opacity-85">
                 A legmagasabb licit nyer.
               </p>
             </div>
