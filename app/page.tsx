@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function HomePage() {
   const [showLogin, setShowLogin] = useState(false);
@@ -8,6 +8,32 @@ export default function HomePage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    const launchDate = new Date("2026-04-01T12:00:00");
+
+    function updateTimeLeft() {
+      const now = new Date().getTime();
+      const distance = launchDate.getTime() - now;
+
+      if (distance <= 0) {
+        setTimeLeft("Indult!");
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((distance / (1000 * 60)) % 60);
+
+      setTimeLeft(`${days} nap ${hours} óra ${minutes} perc`);
+    }
+
+    updateTimeLeft();
+    const timer = setInterval(updateTimeLeft, 60_000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -46,8 +72,7 @@ export default function HomePage() {
       className="relative min-h-screen overflow-hidden bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/landing-bg.png')" }}
     >
-      {/* Sötét overlay */}
-      <div className="absolute inset-0 bg-black/45" />
+      <div className="absolute inset-0 bg-black/50" />
 
       {/* Felső sáv */}
       <div className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
@@ -60,7 +85,7 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => setShowLogin((v) => !v)}
-          className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-medium text-white backdrop-blur hover:bg-white/20 transition"
+          className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
         >
           Bejelentkezés
         </button>
@@ -108,8 +133,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Középső hero */}
-      <div className="relative z-10 flex min-h-[80vh] items-center justify-center px-6 text-center">
+      {/* Hero */}
+      <section className="relative z-10 flex min-h-[72vh] items-center justify-center px-6 text-center">
         <div className="max-w-4xl">
           <div className="mb-4 inline-block rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur">
             A licitálás új korszaka
@@ -120,14 +145,62 @@ export default function HomePage() {
           </h1>
 
           <p className="mt-6 text-xl font-medium text-white/90 sm:text-3xl">
-            Hamarosan indul
+            Indulás:
           </p>
+
+          <div className="mt-3 text-3xl font-bold text-white sm:text-4xl">{timeLeft}</div>
 
           <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/75 sm:text-base">
             A Licitera hamarosan élesben is elindul. Addig a platform jelenleg zárt tesztelés alatt áll.
           </p>
+
+          <div className="mt-10 flex justify-center">
+            <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
+              <input
+                placeholder="Email címed az indulásról értesítéshez"
+                className="flex-1 rounded-xl px-4 py-3 text-black"
+              />
+
+              <button className="rounded-xl bg-gradient-to-r from-blue-500 to-fuchsia-500 px-6 py-3 font-semibold text-white">
+                Értesítést kérek
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* Hogyan működik */}
+      <section className="relative z-10 px-6 pb-20 text-white text-center">
+        <div className="mx-auto max-w-5xl rounded-3xl border border-white/15 bg-white/10 p-8 backdrop-blur-md">
+          <h2 className="mb-10 text-3xl font-bold">Hogyan működik?</h2>
+
+          <div className="grid gap-8 md:grid-cols-3">
+            <div>
+              <div className="mb-3 text-4xl">📦</div>
+              <h3 className="mb-2 font-semibold">Tedd fel</h3>
+              <p className="text-sm opacity-80">
+                Töltsd fel a terméked és indíts aukciót.
+              </p>
+            </div>
+
+            <div>
+              <div className="mb-3 text-4xl">🔥</div>
+              <h3 className="mb-2 font-semibold">Licitek</h3>
+              <p className="text-sm opacity-80">
+                A vevők egymásra licitálnak.
+              </p>
+            </div>
+
+            <div>
+              <div className="mb-3 text-4xl">🏆</div>
+              <h3 className="mb-2 font-semibold">Nyertes</h3>
+              <p className="text-sm opacity-80">
+                A legmagasabb licit nyer.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
