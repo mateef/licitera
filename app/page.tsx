@@ -35,7 +35,6 @@ export default function HomePage() {
 
     updateTimeLeft();
     const timer = setInterval(updateTimeLeft, 60_000);
-
     return () => clearInterval(timer);
   }, []);
 
@@ -112,7 +111,6 @@ export default function HomePage() {
       <div className="absolute inset-0 bg-black/60" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/70" />
 
-      {/* Saját landing header */}
       <div className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
         <div className="text-3xl font-extrabold tracking-tight">
           <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent">
@@ -122,56 +120,13 @@ export default function HomePage() {
 
         <button
           type="button"
-          onClick={() => setShowLogin((v) => !v)}
+          onClick={() => setShowLogin(true)}
           className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
         >
           Bejelentkezés
         </button>
       </div>
 
-      {/* Login panel */}
-      {showLogin && (
-        <div className="relative z-20 mx-auto mt-2 flex max-w-7xl justify-end px-6">
-          <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-black/45 p-5 text-white shadow-2xl backdrop-blur-md">
-            <h2 className="mb-4 text-lg font-semibold">Belépés</h2>
-
-            <form onSubmit={handleLogin} className="space-y-3">
-              <div>
-                <label className="mb-1 block text-sm text-white/80">Felhasználónév</label>
-                <input
-                  className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-white outline-none placeholder:text-white/50"
-                  placeholder="Felhasználónév"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-white/80">Jelszó</label>
-                <input
-                  type="password"
-                  className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-white outline-none placeholder:text-white/50"
-                  placeholder="Jelszó"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-gradient-to-r from-blue-500 to-fuchsia-500 px-4 py-3 font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-              >
-                {loading ? "Belépés..." : "Belépés"}
-              </button>
-
-              {msg && <p className="text-sm text-red-300">{msg}</p>}
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Hero */}
       <section className="relative z-10 flex min-h-[78vh] items-center justify-center px-6 py-10 text-center">
         <div className="w-full max-w-5xl rounded-[32px] border border-white/15 bg-black/35 px-6 py-10 shadow-2xl backdrop-blur-md sm:px-10 sm:py-14">
           <div className="mb-4 inline-block rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur">
@@ -192,7 +147,6 @@ export default function HomePage() {
             A Licitera hamarosan élesben is elindul. Addig a platform jelenleg zárt tesztelés alatt áll.
           </p>
 
-          {/* Waitlist block */}
           <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-white/20 bg-white/12 p-4 shadow-xl backdrop-blur-md sm:p-5">
             <p className="mb-3 text-sm font-medium text-white/90">
               Kérj értesítést az indulásról
@@ -215,14 +169,11 @@ export default function HomePage() {
               </button>
             </div>
 
-            {emailMsg && (
-              <p className="mt-3 text-sm text-white">{emailMsg}</p>
-            )}
+            {emailMsg && <p className="mt-3 text-sm text-white">{emailMsg}</p>}
           </div>
         </div>
       </section>
 
-      {/* Hogyan működik */}
       <section className="relative z-10 px-6 pb-20 text-center text-white">
         <div className="mx-auto max-w-5xl rounded-3xl border border-white/15 bg-black/30 p-8 backdrop-blur-md">
           <h2 className="mb-10 text-3xl font-bold">Hogyan működik?</h2>
@@ -254,6 +205,65 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {showLogin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowLogin(false)}
+          />
+
+          <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/20 bg-[#0f1020]/85 p-6 text-white shadow-2xl backdrop-blur-xl">
+            <button
+              type="button"
+              onClick={() => setShowLogin(false)}
+              className="absolute right-4 top-4 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-sm text-white/80 hover:bg-white/10"
+            >
+              ✕
+            </button>
+
+            <div className="mb-5">
+              <div className="text-2xl font-bold">Bejelentkezés</div>
+              <p className="mt-1 text-sm text-white/65">
+                A zárt tesztverzió jelenleg csak admin hozzáféréssel érhető el.
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm text-white/80">Felhasználónév</label>
+                <input
+                  className="w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-white outline-none placeholder:text-white/40"
+                  placeholder="Felhasználónév"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/80">Jelszó</label>
+                <input
+                  type="password"
+                  className="w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-white outline-none placeholder:text-white/40"
+                  placeholder="Jelszó"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-2xl bg-gradient-to-r from-blue-500 to-fuchsia-500 px-4 py-3 font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+              >
+                {loading ? "Belépés..." : "Belépés"}
+              </button>
+
+              {msg && <p className="text-sm text-red-300">{msg}</p>}
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
