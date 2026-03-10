@@ -38,6 +38,7 @@ export default function LoginPage() {
 
   async function signUp() {
     setMsg("");
+    await supabase.auth.signOut();
 
     if (!fullName.trim()) {
       setMsg("Add meg a teljes neved.");
@@ -85,13 +86,18 @@ export default function LoginPage() {
         return;
       }
 
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: userId,
-        full_name: fullName.trim(),
-        phone: phone.trim(),
-        email: email.trim().toLowerCase(),
-        phone_verified: false,
-      });
+      const { error: profileError } = await supabase.from("profiles").upsert(
+  {
+    id: userId,
+    full_name: fullName.trim(),
+    phone: phone.trim(),
+    email: email.trim().toLowerCase(),
+    phone_verified: false,
+  },
+  {
+    onConflict: "id",
+  }
+);
 
       if (profileError) {
         setMsg(profileError.message);
