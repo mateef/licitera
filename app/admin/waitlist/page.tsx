@@ -24,12 +24,23 @@ export default async function AdminWaitlistPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Várólista</h1>
-        <p className="text-sm text-muted-foreground">
-          Itt látod az indulásról értesítést kérő felhasználókat.
-        </p>
-      </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <h1 className="text-2xl font-semibold tracking-tight">Várólista</h1>
+    <p className="text-sm text-muted-foreground">
+      Itt látod az indulásról értesítést kérő felhasználókat.
+    </p>
+  </div>
+
+  <div className="flex gap-2">
+    <a
+      href="/api/admin/waitlist-export"
+      className="inline-flex h-10 items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground"
+    >
+      CSV letöltés
+    </a>
+  </div>
+</div>
 
       <div className="flex flex-wrap gap-2">
         <div className="rounded-full border px-3 py-1 text-sm">
