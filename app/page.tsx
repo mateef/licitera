@@ -13,6 +13,7 @@ export default function HomePage() {
   const [email, setEmail] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
 
   useEffect(() => {
     const launchDate = new Date("2026-04-01T12:00:00");
@@ -32,6 +33,22 @@ export default function HomePage() {
 
       setTimeLeft(`${days} nap ${hours} óra ${minutes} perc`);
     }
+    useEffect(() => {
+  async function loadWaitlistCount() {
+    try {
+      const res = await fetch("/api/waitlist-count");
+      const data = await res.json();
+
+      if (res.ok) {
+        setWaitlistCount(data.count ?? 0);
+      }
+    } catch {
+      // csendben maradunk, csak nem írjuk ki
+    }
+  }
+
+  loadWaitlistCount();
+}, []);
 
     updateTimeLeft();
     const timer = setInterval(updateTimeLeft, 60_000);
@@ -92,9 +109,15 @@ async function handleWaitlistSignup() {
     const data = await res.json().catch(() => null);
 
     if (res.ok) {
-      setEmailMsg("Feliratkozva 🚀");
-      setEmail("");
-    } else {
+  const data = await res.json().catch(() => null);
+
+  setEmailMsg(data?.message || "Feliratkozva 🚀");
+  setEmail("");
+
+  if (!data?.message?.includes("már fel van iratkozva")) {
+    setWaitlistCount((prev) => (prev ?? 0) + 1);
+  }
+} else {
       setEmailMsg(data?.error || "Hiba történt a feliratkozásnál.");
     }
   } catch {
@@ -147,6 +170,12 @@ async function handleWaitlistSignup() {
           <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/85 sm:text-base">
             A Licitera hamarosan élesben is elindul. Addig a platform jelenleg zárt tesztelés alatt áll.
           </p>
+
+          {waitlistCount !== null && (
+  <div className="mx-auto mt-6 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur">
+    Már {waitlistCount} érdeklődő várja az indulást
+  </div>
+)}
 
           <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-white/20 bg-white/12 p-4 shadow-xl backdrop-blur-md sm:p-5">
             <p className="mb-3 text-sm font-medium text-white/90">

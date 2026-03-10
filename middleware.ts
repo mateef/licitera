@@ -5,12 +5,13 @@ export function middleware(req: NextRequest) {
 
   // Publikus oldalak
   const publicPaths = [
-    "/",
-    "/api/prelaunch-login",
-    "/api/prelaunch-logout",
-    "/api/waitlist",
-    "/favicon.ico",
-  ];
+  "/",
+  "/api/prelaunch-login",
+  "/api/prelaunch-logout",
+  "/api/waitlist",
+  "/api/waitlist-count",
+  "/favicon.ico",
+];
 
   const isPublic =
     publicPaths.includes(pathname) ||
