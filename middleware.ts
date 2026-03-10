@@ -7,6 +7,8 @@ export function middleware(req: NextRequest) {
   const publicPaths = [
     "/",
     "/api/prelaunch-login",
+    "/api/prelaunch-logout",
+    "/api/waitlist",
     "/favicon.ico",
   ];
 
@@ -34,9 +36,6 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-      Védünk mindent, kivéve a Next belső fájljait és a statikus asseteket.
-    */
     "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };

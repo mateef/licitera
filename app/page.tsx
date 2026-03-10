@@ -70,38 +70,39 @@ export default function HomePage() {
     }
   }
 
-  async function handleWaitlistSignup() {
-    setEmailMsg("");
+async function handleWaitlistSignup() {
+  setEmailMsg("");
 
-    if (!email.trim()) {
-      setEmailMsg("Adj meg egy email címet.");
-      return;
-    }
-
-    setEmailLoading(true);
-
-    try {
-      const res = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
-
-      if (res.ok) {
-        setEmailMsg("Feliratkozva 🚀");
-        setEmail("");
-      } else {
-        const data = await res.json().catch(() => null);
-        setEmailMsg(data?.error || "Hiba történt a feliratkozásnál.");
-      }
-    } catch {
-      setEmailMsg("Hiba történt a feliratkozásnál.");
-    } finally {
-      setEmailLoading(false);
-    }
+  if (!email.trim()) {
+    setEmailMsg("Adj meg egy email címet.");
+    return;
   }
+
+  setEmailLoading(true);
+
+  try {
+    const res = await fetch("/api/waitlist", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (res.ok) {
+      setEmailMsg("Feliratkozva 🚀");
+      setEmail("");
+    } else {
+      setEmailMsg(data?.error || "Hiba történt a feliratkozásnál.");
+    }
+  } catch {
+    setEmailMsg("Hiba történt a feliratkozásnál.");
+  } finally {
+    setEmailLoading(false);
+  }
+}
 
   return (
     <main
