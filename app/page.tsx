@@ -124,7 +124,8 @@ export default function HomePage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#060816] text-white">
+    <main className="relative min-h-screen bg-[#f6f7fb] px-3 py-3 text-white sm:px-4 sm:py-4">
+      <div className="relative min-h-[calc(100vh-24px)] overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[#060816] shadow-[0_24px_90px_rgba(15,23,42,0.12)] sm:rounded-[2.25rem]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.30),transparent_34%),radial-gradient(circle_at_top_right,rgba(217,70,239,0.24),transparent_28%),radial-gradient(circle_at_bottom,rgba(99,102,241,0.16),transparent_36%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,8,22,0.42),rgba(6,8,22,0.82))]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,255,255,0.8)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.8)_1px,transparent_1px)] [background-size:32px_32px]" />
@@ -260,11 +261,13 @@ export default function HomePage() {
                 <div className="text-xs uppercase tracking-[0.18em] text-white/40">Licitera</div>
               </div>
 
-              <img
-                src="/landing-bg.png"
-                alt="Licitera előnézet"
-                className="h-[260px] w-full rounded-[1.5rem] object-cover sm:h-[340px] lg:h-[480px]"
-              />
+              <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/20">
+                <img
+                  src="/landing-bg.png"
+                  alt="Licitera előnézet"
+                  className="h-[260px] w-full object-cover sm:h-[340px] lg:h-[480px]"
+                />
+              </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
@@ -382,6 +385,7 @@ export default function HomePage() {
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }
