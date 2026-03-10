@@ -33,26 +33,28 @@ export default function HomePage() {
 
       setTimeLeft(`${days} nap ${hours} óra ${minutes} perc`);
     }
-    useEffect(() => {
-  async function loadWaitlistCount() {
-    try {
-      const res = await fetch("/api/waitlist-count");
-      const data = await res.json();
-
-      if (res.ok) {
-        setWaitlistCount(data.count ?? 0);
-      }
-    } catch {
-      // csendben maradunk, csak nem írjuk ki
-    }
-  }
-
-  loadWaitlistCount();
-}, []);
 
     updateTimeLeft();
     const timer = setInterval(updateTimeLeft, 60_000);
+
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    async function loadWaitlistCount() {
+      try {
+        const res = await fetch("/api/waitlist-count");
+        const data = await res.json().catch(() => null);
+
+        if (res.ok) {
+          setWaitlistCount(data?.count ?? 0);
+        }
+      } catch {
+        // csendben maradunk
+      }
+    }
+
+    loadWaitlistCount();
   }, []);
 
   async function handleLogin(e: React.FormEvent) {
@@ -87,45 +89,43 @@ export default function HomePage() {
     }
   }
 
-async function handleWaitlistSignup() {
-  setEmailMsg("");
+  async function handleWaitlistSignup() {
+    setEmailMsg("");
 
-  if (!email.trim()) {
-    setEmailMsg("Adj meg egy email címet.");
-    return;
-  }
-
-  setEmailLoading(true);
-
-  try {
-    const res = await fetch("/api/waitlist", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (res.ok) {
-  const data = await res.json().catch(() => null);
-
-  setEmailMsg(data?.message || "Feliratkozva 🚀");
-  setEmail("");
-
-  if (!data?.message?.includes("már fel van iratkozva")) {
-    setWaitlistCount((prev) => (prev ?? 0) + 1);
-  }
-} else {
-      setEmailMsg(data?.error || "Hiba történt a feliratkozásnál.");
+    if (!email.trim()) {
+      setEmailMsg("Adj meg egy email címet.");
+      return;
     }
-  } catch {
-    setEmailMsg("Hiba történt a feliratkozásnál.");
-  } finally {
-    setEmailLoading(false);
+
+    setEmailLoading(true);
+
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok) {
+        setEmailMsg(data?.message || "Feliratkozva 🚀");
+        setEmail("");
+
+        if (!data?.message?.includes("már fel van iratkozva")) {
+          setWaitlistCount((prev) => (prev ?? 0) + 1);
+        }
+      } else {
+        setEmailMsg(data?.error || "Hiba történt a feliratkozásnál.");
+      }
+    } catch {
+      setEmailMsg("Hiba történt a feliratkozásnál.");
+    } finally {
+      setEmailLoading(false);
+    }
   }
-}
 
   return (
     <main
@@ -172,10 +172,10 @@ async function handleWaitlistSignup() {
           </p>
 
           {waitlistCount !== null && (
-  <div className="mx-auto mt-6 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur">
-    Már {waitlistCount} érdeklődő várja az indulást
-  </div>
-)}
+            <div className="mx-auto mt-6 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur">
+              Már {waitlistCount} érdeklődő várja az indulást
+            </div>
+          )}
 
           <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-white/20 bg-white/12 p-4 shadow-xl backdrop-blur-md sm:p-5">
             <p className="mb-3 text-sm font-medium text-white/90">
