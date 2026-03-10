@@ -13,6 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
+type ProfileRow = {
+  full_name: string | null;
+};
+
 export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
@@ -20,9 +24,9 @@ export function SiteHeader() {
 
   const [search, setSearch] = useState("");
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string>("");
   const [mounted, setMounted] = useState(false);
 
-  // landing oldalon ne jelenjen meg
   if (pathname === "/") {
     return null;
   }
@@ -31,12 +35,35 @@ export function SiteHeader() {
     setSearch(searchParams.get("q") ?? "");
   }, [searchParams]);
 
+  async function loadSessionAndProfile() {
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user?.id ?? null;
+    setSessionUserId(userId);
+
+    if (!userId) {
+      setFullName("");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const profileRow = profile as ProfileRow | null;
+    const firstName = profileRow?.full_name?.trim()?.split(" ")[0] ?? "";
+    setFullName(firstName);
+  }
+
   useEffect(() => {
     setMounted(true);
-    supabase.auth.getSession().then(({ data }) => setSessionUserId(data.session?.user?.id ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange(() =>
-      supabase.auth.getSession().then(({ data }) => setSessionUserId(data.session?.user?.id ?? null))
-    );
+    loadSessionAndProfile();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      loadSessionAndProfile();
+    });
+
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -54,12 +81,13 @@ export function SiteHeader() {
     <header className="sticky top-0 z-50 border-b bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-9 max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
-          <span>Üdvözöllek!</span>
           {sessionUserId ? (
-            <span className="text-foreground">Bejelentkezve ✅</span>
+            <span className="text-foreground">
+              Üdvözöllek{fullName ? `, ${fullName}!` : "!"}
+            </span>
           ) : (
             <a className="hover:underline" href="/login">
-              Jelentkezz be
+              A belépéshez kattints ide
             </a>
           )}
         </div>
@@ -93,12 +121,6 @@ export function SiteHeader() {
           </span>
         </button>
 
-        <div className="hidden md:block text-xs text-muted-foreground leading-4">
-          Aukciók
-          <br />
-          licitre
-        </div>
-
         <div className="ml-2 flex flex-1 items-center gap-2">
           <form
             className="flex flex-1 items-center gap-2"
@@ -126,7 +148,9 @@ export function SiteHeader() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => router.push("/listings")}>Összes</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/listings")}>
+                  Összes
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
