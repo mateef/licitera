@@ -20,10 +20,14 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [sendingSms, setSendingSms] = useState(false);
+  const [verifyingSms, setVerifyingSms] = useState(false);
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(false);
+  const [smsCode, setSmsCode] = useState("");
 
   const [msg, setMsg] = useState("");
 
@@ -131,6 +135,7 @@ export default function ProfilePage() {
 
       if (phoneChanged) {
         setPhoneVerified(false);
+        setSmsCode("");
         setMsg("Profil mentve. A telefonszám módosult, ezért újra hitelesíteni kell.");
         toast.success("Profil mentve, a telefonszám újrahitelesítést igényel.");
       } else {
@@ -139,6 +144,92 @@ export default function ProfilePage() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function sendVerificationSms() {
+    setMsg("");
+
+    if (!phone.trim()) {
+      toast.error("Adj meg telefonszámot.");
+      return;
+    }
+
+    if (!isLikelyHungarianPhone(phone.trim())) {
+      toast.error("Adj meg érvényes telefonszámot. Példa: +36301234567");
+      return;
+    }
+
+    setSendingSms(true);
+
+    try {
+      const res = await fetch("/api/send-verification-sms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: phone.trim(),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setMsg(data?.error || "Nem sikerült elküldeni az SMS kódot.");
+        toast.error("Nem sikerült elküldeni az SMS kódot.");
+        return;
+      }
+
+      setMsg("SMS kód elküldve a telefonszámodra.");
+      toast.success("SMS kód elküldve.");
+    } finally {
+      setSendingSms(false);
+    }
+  }
+
+  async function verifyPhone() {
+    setMsg("");
+
+    if (!userId) {
+      toast.error("Előbb jelentkezz be.");
+      return;
+    }
+
+    if (!smsCode.trim()) {
+      toast.error("Add meg az SMS-ben kapott kódot.");
+      return;
+    }
+
+    setVerifyingSms(true);
+
+    try {
+      const res = await fetch("/api/check-verification-sms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: phone.trim(),
+          code: smsCode.trim(),
+          userId,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setMsg(data?.error || "Nem sikerült ellenőrizni az SMS kódot.");
+        toast.error("Sikertelen SMS ellenőrzés.");
+        return;
+      }
+
+      setPhoneVerified(true);
+      setSmsCode("");
+      setMsg("Telefonszám sikeresen hitelesítve.");
+      toast.success("Telefonszám hitelesítve.");
+    } finally {
+      setVerifyingSms(false);
     }
   }
 
@@ -228,9 +319,10 @@ export default function ProfilePage() {
             />
           </div>
 
-          <div className="rounded-xl border bg-background/60 p-3 text-sm">
+          <div className="rounded-xl border bg-background/60 p-4 text-sm">
             <div className="font-medium">Telefonszám hitelesítése</div>
-            <div className="mt-1 text-muted-foreground">
+
+            <div className="mt-2 text-muted-foreground">
               Állapot:{" "}
               {phoneVerified ? (
                 <span className="font-medium text-green-600">Hitelesítve</span>
@@ -238,10 +330,42 @@ export default function ProfilePage() {
                 <span className="font-medium text-amber-600">Nincs hitelesítve</span>
               )}
             </div>
+
             {!phoneVerified && (
-              <div className="mt-2 text-xs text-muted-foreground">
-                A licitáláshoz és a hirdetésfeladáshoz hitelesített telefonszám szükséges.
-              </div>
+              <>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  A licitáláshoz és a hirdetésfeladáshoz hitelesített telefonszám szükséges.
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={sendVerificationSms}
+                    disabled={sendingSms}
+                  >
+                    {sendingSms ? "SMS küldése..." : "SMS kód küldése"}
+                  </Button>
+
+                  <div className="flex flex-1 gap-2">
+                    <Input
+                      placeholder="SMS kód"
+                      value={smsCode}
+                      onChange={(e) => setSmsCode(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                    />
+
+                    <Button
+                      type="button"
+                      onClick={verifyPhone}
+                      disabled={verifyingSms || !smsCode.trim()}
+                    >
+                      {verifyingSms ? "Ellenőrzés..." : "Ellenőrzés"}
+                    </Button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
