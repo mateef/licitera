@@ -28,11 +28,18 @@ export async function POST(req: Request) {
       .insert({ email: normalizedEmail });
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
-    }
+  if (error.message.includes("duplicate key")) {
+    return NextResponse.json({
+      success: true,
+      message: "Ez az email már fel van iratkozva."
+    });
+  }
+
+  return NextResponse.json(
+    { error: "Hiba történt a feliratkozásnál." },
+    { status: 400 }
+  );
+}
 
     return NextResponse.json({ success: true });
   } catch (err) {
