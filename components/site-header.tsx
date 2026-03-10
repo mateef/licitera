@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
 type ProfileRow = {
   full_name: string | null;
@@ -24,7 +25,7 @@ export function SiteHeader() {
 
   const [search, setSearch] = useState("");
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [fullName, setFullName] = useState<string>("");
+  const [displayName, setDisplayName] = useState("");
   const [mounted, setMounted] = useState(false);
 
   if (pathname === "/") {
@@ -35,13 +36,20 @@ export function SiteHeader() {
     setSearch(searchParams.get("q") ?? "");
   }, [searchParams]);
 
+  function getHungarianFirstName(fullName: string | null | undefined) {
+    if (!fullName) return "";
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "";
+    return parts[parts.length - 1] || "";
+  }
+
   async function loadSessionAndProfile() {
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id ?? null;
     setSessionUserId(userId);
 
     if (!userId) {
-      setFullName("");
+      setDisplayName("");
       return;
     }
 
@@ -52,8 +60,7 @@ export function SiteHeader() {
       .maybeSingle();
 
     const profileRow = profile as ProfileRow | null;
-    const firstName = profileRow?.full_name?.trim()?.split(" ")[0] ?? "";
-    setFullName(firstName);
+    setDisplayName(getHungarianFirstName(profileRow?.full_name));
   }
 
   useEffect(() => {
@@ -77,13 +84,20 @@ export function SiteHeader() {
     router.push(`/listings?${params.toString()}`);
   }
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    toast.success("Kijelentkeztél.");
+    router.push("/login");
+    router.refresh();
+  }
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-9 max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           {sessionUserId ? (
             <span className="text-foreground">
-              Üdvözöllek{fullName ? `, ${fullName}!` : "!"}
+              Üdvözöllek{displayName ? `, ${displayName}!` : "!"}
             </span>
           ) : (
             <a className="hover:underline" href="/login">
@@ -93,15 +107,45 @@ export function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-4">
-          <a className="hover:underline" href="/my-listings">
-            Saját aukciók
-          </a>
-          <a className="hover:underline" href="/create-listing">
-            Eladás
-          </a>
-          <a className="hover:underline" href="/watchlist">
-            Figyelőlista
-          </a>
+          {sessionUserId ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Profil ▼
+                </button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => router.push("/profile")}>
+                  Profil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/my-listings")}>
+                  Saját aukciók
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/watchlist")}>
+                  Figyelőlista
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut}>
+                  Kijelentkezés
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <>
+              <a className="hover:underline" href="/my-listings">
+                Saját aukciók
+              </a>
+              <a className="hover:underline" href="/create-listing">
+                Eladás
+              </a>
+              <a className="hover:underline" href="/watchlist">
+                Figyelőlista
+              </a>
+            </>
+          )}
         </div>
       </div>
 
@@ -120,6 +164,12 @@ export function SiteHeader() {
             Licitera
           </span>
         </button>
+
+        <div className="hidden md:block text-xs text-muted-foreground leading-4">
+          Aukciók
+          <br />
+          licitre
+        </div>
 
         <div className="ml-2 flex flex-1 items-center gap-2">
           <form
