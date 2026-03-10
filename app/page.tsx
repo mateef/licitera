@@ -166,7 +166,7 @@ export default function HomePage() {
           <h1 className="mt-5 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl">
             A licitálás
             <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
-              modern verziója
+              új korszaka
             </span>
           </h1>
 
@@ -176,7 +176,7 @@ export default function HomePage() {
 
           <div className="mt-7 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 shadow-2xl backdrop-blur-xl">
-              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Indulás</div>
+              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Egy</div>
               <div className="mt-2 text-2xl font-extrabold text-white sm:text-3xl">
                 {timeParts.isLive ? "ÉLŐ" : timeParts.days}
               </div>
@@ -184,13 +184,13 @@ export default function HomePage() {
             </div>
 
             <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 shadow-2xl backdrop-blur-xl">
-              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Hátralévő</div>
+              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Új</div>
               <div className="mt-2 text-2xl font-extrabold text-white sm:text-3xl">{timeParts.isLive ? "0" : timeParts.hours}</div>
               <div className="mt-1 text-sm text-white/65">óra</div>
             </div>
 
             <div className="rounded-2xl border border-white/12 bg-white/[0.08] p-4 shadow-2xl backdrop-blur-xl">
-              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Pontosítás</div>
+              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Korszak</div>
               <div className="mt-2 text-2xl font-extrabold text-white sm:text-3xl">{timeParts.isLive ? "0" : timeParts.minutes}</div>
               <div className="mt-1 text-sm text-white/65">perc</div>
             </div>
@@ -256,7 +256,7 @@ export default function HomePage() {
               <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                  Preview
+                  Előnézet
                 </div>
                 <div className="text-xs uppercase tracking-[0.18em] text-white/40">Licitera</div>
               </div>
@@ -271,15 +271,15 @@ export default function HomePage() {
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-                  <div className="text-xs uppercase tracking-[0.16em] text-white/40">Preview note</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-white/40">Cél</div>
                   <div className="mt-2 text-sm text-white/72">
                     A végleges felület célja egy gyorsabb, tisztább és bizalomépítőbb aukciós élmény.
                   </div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-                  <div className="text-xs uppercase tracking-[0.16em] text-white/40">Launch fókusz</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-white/40">Zajlik a fejlesztés</div>
                   <div className="mt-2 text-sm text-white/72">
-                    Hitelesítés, átvételi módok, helyszín, értékelések és modern UX minden eszközön.
+                    Magyarország legjobb, legmodernebb, legegyszerűbben használható licit weboldala.
                   </div>
                 </div>
               </div>
