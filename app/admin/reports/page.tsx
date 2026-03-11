@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +30,7 @@ type ListingRow = {
   id: string;
   title: string;
   image_urls: string[] | null;
+  image_paths: string[] | null;
 };
 
 type ProfileRow = {
@@ -72,31 +79,41 @@ export default function AdminReportsPage() {
     const userIds = Array.from(new Set(reportRows.map((r) => r.reporter_user_id)));
 
     if (listingIds.length > 0) {
-      const { data: listingData } = await supabase
+      const { data: listingData, error: listingError } = await supabase
         .from("listings")
-        .select("id,title,image_urls")
+        .select("id,title,image_urls,image_paths")
         .in("id", listingIds);
 
-      const nextListingsMap: Record<string, ListingRow> = {};
-      (listingData ?? []).forEach((item: any) => {
-        nextListingsMap[item.id] = item;
-      });
-      setListingsMap(nextListingsMap);
+      if (listingError) {
+        toast.error(listingError.message);
+        setListingsMap({});
+      } else {
+        const nextListingsMap: Record<string, ListingRow> = {};
+        (listingData ?? []).forEach((item: any) => {
+          nextListingsMap[item.id] = item;
+        });
+        setListingsMap(nextListingsMap);
+      }
     } else {
       setListingsMap({});
     }
 
     if (userIds.length > 0) {
-      const { data: profileData } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("id,full_name,email")
         .in("id", userIds);
 
-      const nextProfilesMap: Record<string, ProfileRow> = {};
-      (profileData ?? []).forEach((item: any) => {
-        nextProfilesMap[item.id] = item;
-      });
-      setProfilesMap(nextProfilesMap);
+      if (profileError) {
+        toast.error(profileError.message);
+        setProfilesMap({});
+      } else {
+        const nextProfilesMap: Record<string, ProfileRow> = {};
+        (profileData ?? []).forEach((item: any) => {
+          nextProfilesMap[item.id] = item;
+        });
+        setProfilesMap(nextProfilesMap);
+      }
     } else {
       setProfilesMap({});
     }
@@ -104,25 +121,59 @@ export default function AdminReportsPage() {
     setLoading(false);
   }
 
-  async function closeReport(reportId: string, nextStatus: "approved" | "rejected") {
-    setWorkingId(reportId);
+  async function closeReport(report: ReportRow, nextStatus: "approved" | "rejected") {
+    setWorkingId(report.id);
 
     try {
+      if (nextStatus === "approved") {
+        const listing = listingsMap[report.listing_id];
+
+        if (listing) {
+          const paths = listing.image_paths ?? [];
+
+          if (paths.length > 0) {
+            const { error: storageError } = await supabase.storage
+              .from("listing-images")
+              .remove(paths);
+
+            if (storageError) {
+              toast.error(`Képek törlése sikertelen: ${storageError.message}`);
+              return;
+            }
+          }
+
+          const { error: deleteListingError } = await supabase
+            .from("listings")
+            .delete()
+            .eq("id", report.listing_id);
+
+          if (deleteListingError) {
+            toast.error(deleteListingError.message);
+            return;
+          }
+        }
+      }
+
       const { error } = await supabase
         .from("listing_reports")
         .update({
           status: nextStatus,
-          admin_note: adminNotes[reportId] ?? null,
+          admin_note: adminNotes[report.id] ?? report.admin_note ?? null,
           reviewed_at: new Date().toISOString(),
         })
-        .eq("id", reportId);
+        .eq("id", report.id);
 
       if (error) {
         toast.error(error.message);
         return;
       }
 
-      toast.success(nextStatus === "approved" ? "Report jóváhagyva." : "Report elutasítva.");
+      toast.success(
+        nextStatus === "approved"
+          ? "Report jóváhagyva, a hirdetés törölve."
+          : "Report elutasítva."
+      );
+
       await loadAll();
     } finally {
       setWorkingId(null);
@@ -240,7 +291,7 @@ export default function AdminReportsPage() {
                       <div className="flex flex-wrap gap-2">
                         <Button
                           variant="destructive"
-                          onClick={() => closeReport(report.id, "approved")}
+                          onClick={() => closeReport(report, "approved")}
                           disabled={workingId === report.id}
                         >
                           {workingId === report.id ? "Feldolgozás..." : "Jogos report"}
@@ -248,7 +299,7 @@ export default function AdminReportsPage() {
 
                         <Button
                           variant="outline"
-                          onClick={() => closeReport(report.id, "rejected")}
+                          onClick={() => closeReport(report, "rejected")}
                           disabled={workingId === report.id}
                         >
                           Elutasítás
@@ -256,7 +307,10 @@ export default function AdminReportsPage() {
                       </div>
                     ) : (
                       <div className="text-xs text-muted-foreground">
-                        Feldolgozva{report.reviewed_at ? `: ${new Date(report.reviewed_at).toLocaleString()}` : "."}
+                        Feldolgozva
+                        {report.reviewed_at
+                          ? `: ${new Date(report.reviewed_at).toLocaleString()}`
+                          : "."}
                       </div>
                     )}
                   </div>
