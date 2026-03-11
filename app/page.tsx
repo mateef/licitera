@@ -129,7 +129,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(135deg,#dbeafe_0%,#f8fafc_45%,#f5d0fe_100%)] px-2 py-2 text-white sm:px-3 sm:py-3">
+    <main className="min-h-screen bg-[linear-gradient(135deg,#dbeafe_0%,#f8fafc_45%,#f5d0fe_100%)] px-3 py-3 text-white sm:px-4 sm:py-4">
       <div className="relative overflow-hidden rounded-[2rem] bg-[#060816] shadow-[0_30px_90px_rgba(15,23,42,0.18)]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.28),transparent_30%),radial-gradient(circle_at_top_right,rgba(217,70,239,0.2),transparent_28%),radial-gradient(circle_at_bottom,rgba(99,102,241,0.18),transparent_32%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,8,22,0.28),rgba(6,8,22,0.8))]" />
