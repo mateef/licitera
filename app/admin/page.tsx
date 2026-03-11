@@ -239,7 +239,7 @@ export default function AdminPage() {
               </CardHeader>
 
               <CardContent>
-                {item.href === "/admin/delete-requests" || item.href === "/admin/stats" ? (
+                {item.href === "/admin/delete-requests" || item.href === "/admin/stats" || item.href === "/admin/reports" ? (
   <Button className="w-full rounded-xl" asChild>
     <a href={item.href}>Megnyitás</a>
   </Button>
