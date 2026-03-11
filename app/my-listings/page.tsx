@@ -16,14 +16,17 @@ type Listing = {
   title: string;
   current_price: number;
   ends_at: string;
+  created_at: string;
   image_urls: string[] | null;
   image_paths: string[] | null;
+  bid_count?: number;
 };
 
 export default function MyListingsPage() {
   const [uid, setUid] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+    const [deleteReasons, setDeleteReasons] = useState<Record<string, string>>({});
 
   // hydrate-safe "now"
   const [now, setNow] = useState<number>(Date.now());
@@ -47,6 +50,18 @@ export default function MyListingsPage() {
     }
     return `${hours} óra ${minutes} perc`;
   }
+  function canDeleteDirectly(listing: Listing) {
+  const createdAt = new Date(listing.created_at).getTime();
+  const oneHourLater = createdAt + 60 * 60 * 1000;
+  const stillWithinOneHour = Date.now() <= oneHourLater;
+  const hasNoBids = (listing.bid_count ?? 0) === 0;
+  const isStillActive = new Date(listing.ends_at).getTime() > Date.now();
+
+  return stillWithinOneHour && hasNoBids && isStillActive;
+}
+function needsDeleteRequest(listing: Listing) {
+  return !canDeleteDirectly(listing);
+}
 
   async function init() {
     setLoading(true);
@@ -65,10 +80,10 @@ export default function MyListingsPage() {
 
   async function loadMyListings(userId: string) {
     const { data, error } = await supabase
-      .from("listings")
-      .select("id,title,current_price,ends_at,image_urls,image_paths")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+        .from("listings")
+        .select("id,title,current_price,ends_at,created_at,image_urls,image_paths,bids(count)")
+         .eq("user_id", userId)
+         .order("created_at", { ascending: false });
 
     if (error) {
       toast.error(error.message);
@@ -77,7 +92,13 @@ export default function MyListingsPage() {
       return;
     }
 
-    setListings((data ?? []) as any);
+    const formatted =
+  data?.map((item: any) => ({
+    ...item,
+    bid_count: item.bids?.[0]?.count ?? 0,
+  })) ?? [];
+
+setListings(formatted);
     setLoading(false);
   }
 
@@ -121,6 +142,30 @@ export default function MyListingsPage() {
       toast.error("Váratlan hiba történt törlés közben.");
     }
   }
+  async function createDeleteRequest(listingId: string, reason: string) {
+  if (!uid) return;
+
+  const trimmedReason = reason.trim();
+
+  if (!trimmedReason) {
+    toast.error("Írd le, miért szeretnéd törölni az aukciót.");
+    return;
+  }
+
+  const { error } = await supabase.from("listing_delete_requests").insert({
+    listing_id: listingId,
+    user_id: uid,
+    reason: trimmedReason,
+    status: "pending",
+  });
+
+  if (error) {
+    toast.error(error.message);
+    return;
+  }
+
+  toast.success("Törlési kérelmed elküldve.");
+}
 
   useEffect(() => {
     init();
@@ -217,6 +262,7 @@ export default function MyListingsPage() {
               const ends = new Date(l.ends_at).getTime();
               const isActive = ends > now;
               const cover = l.image_urls?.[0] ?? null;
+              const directDeleteAllowed = canDeleteDirectly(l);
 
               return (
                 <Card key={l.id} className="overflow-hidden transition hover:shadow-md">
@@ -255,34 +301,84 @@ export default function MyListingsPage() {
                       <span className="text-muted-foreground">Jelenlegi licit</span>
                       <span className="font-semibold">{formatHuf(l.current_price)}</span>
                     </div>
+                    <div className="text-xs text-muted-foreground">
+  {(l.bid_count ?? 0) === 0
+    ? "Még nincs licit."
+    : `${l.bid_count} licit érkezett.`}
+</div>
+
+<div className="text-xs text-muted-foreground">
+  {directDeleteAllowed
+    ? "Közvetlenül törölhető: 1 órán belül, licit nélkül."
+    : "Közvetlen törlés nem elérhető, csak admin kérelmen keresztül."}
+</div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <Button variant="outline" asChild>
                         <a href={`/listing/${l.id}`}>Megnyitás</a>
                       </Button>
 
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive">Törlés</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Biztosan törlöd?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Az aukció és a feltöltött képek is törlődnek. Ez a művelet nem visszavonható.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Mégse</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteListing(l.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Törlés
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {directDeleteAllowed ? (
+  <AlertDialog>
+    <AlertDialogTrigger asChild>
+      <Button variant="destructive">Törlés</Button>
+    </AlertDialogTrigger>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Biztosan törlöd?</AlertDialogTitle>
+        <AlertDialogDescription>
+          Az aukció és a feltöltött képek is törlődnek. Ez a művelet nem visszavonható.
+          Közvetlen törlés csak a létrehozást követő 1 órán belül és licit nélkül engedélyezett.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Mégse</AlertDialogCancel>
+        <AlertDialogAction
+          onClick={() => deleteListing(l.id)}
+          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+        >
+          Törlés
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+) : (
+  <AlertDialog>
+    <AlertDialogTrigger asChild>
+      <Button variant="secondary">Törlési kérelem</Button>
+    </AlertDialogTrigger>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Törlési kérelem küldése</AlertDialogTitle>
+        <AlertDialogDescription>
+          Ez az aukció már nem törölhető közvetlenül.
+          Írd le röviden, miért szeretnéd törölni, és az admin elbírálja a kérelmet.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+
+      <textarea
+        className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
+        placeholder="Pl. rossz terméket töltöttem fel, hibás adatok szerepelnek, a termék megsérült..."
+        value={deleteReasons[l.id] ?? ""}
+        onChange={(e) =>
+          setDeleteReasons((prev) => ({
+            ...prev,
+            [l.id]: e.target.value,
+          }))
+        }
+      />
+
+      <AlertDialogFooter>
+        <AlertDialogCancel>Mégse</AlertDialogCancel>
+        <AlertDialogAction
+          onClick={() => createDeleteRequest(l.id, deleteReasons[l.id] ?? "")}
+        >
+          Kérelem küldése
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+)}
                     </div>
                   </CardContent>
                 </Card>
