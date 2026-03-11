@@ -85,12 +85,16 @@ function buildDescendantIds(allCategories: Category[], rootId: string): string[]
   }
 
   const stack = [rootId];
+
   while (stack.length > 0) {
     const current = stack.pop()!;
     result.add(current);
+
     const children = childrenByParent.get(current) ?? [];
     for (const childId of children) {
-      if (!result.has(childId)) stack.push(childId);
+      if (!result.has(childId)) {
+        stack.push(childId);
+      }
     }
   }
 
@@ -133,7 +137,11 @@ export default function ListingsPage() {
     () =>
       allCategories
         .filter((c) => c.parent_id === null)
-        .sort((a, b) => (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.name.localeCompare(b.name, "hu")),
+        .sort(
+          (a, b) =>
+            (a.sort_order ?? 9999) - (b.sort_order ?? 9999) ||
+            a.name.localeCompare(b.name, "hu")
+        ),
     [allCategories]
   );
 
@@ -141,7 +149,11 @@ export default function ListingsPage() {
     () =>
       allCategories
         .filter((c) => c.parent_id === catL1)
-        .sort((a, b) => (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.name.localeCompare(b.name, "hu")),
+        .sort(
+          (a, b) =>
+            (a.sort_order ?? 9999) - (b.sort_order ?? 9999) ||
+            a.name.localeCompare(b.name, "hu")
+        ),
     [allCategories, catL1]
   );
 
@@ -149,11 +161,17 @@ export default function ListingsPage() {
     () =>
       allCategories
         .filter((c) => c.parent_id === catL2)
-        .sort((a, b) => (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.name.localeCompare(b.name, "hu")),
+        .sort(
+          (a, b) =>
+            (a.sort_order ?? 9999) - (b.sort_order ?? 9999) ||
+            a.name.localeCompare(b.name, "hu")
+        ),
     [allCategories, catL2]
   );
 
-  const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
+  const finalCategoryId = useMemo(() => {
+    return catL3 || catL2 || catL1 || "";
+  }, [catL1, catL2, catL3]);
 
   const selectedCategoryIds = useMemo(() => {
     if (!finalCategoryId) return [];
@@ -255,7 +273,9 @@ export default function ListingsPage() {
         })) ?? [];
 
       if (selectedCategoryIds.length > 0) {
-        formatted = formatted.filter((l: any) => l.category_id && selectedCategoryIds.includes(l.category_id));
+        formatted = formatted.filter(
+          (l: any) => l.category_id && selectedCategoryIds.includes(l.category_id)
+        );
       }
 
       setListings(formatted);
@@ -286,6 +306,7 @@ export default function ListingsPage() {
     function onStorage(e: StorageEvent) {
       if (e.key === "watchlist") setWatchIds(readWatchlistIds());
     }
+
     function onLocalChange() {
       setWatchIds(readWatchlistIds());
     }
