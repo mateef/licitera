@@ -239,15 +239,15 @@ export default function AdminPage() {
               </CardHeader>
 
               <CardContent>
-                {item.href === "/admin/delete-requests" ? (
-                  <Button className="w-full rounded-xl" asChild>
-                    <a href={item.href}>Megnyitás</a>
-                  </Button>
-                ) : (
-                  <Button variant="outline" className="w-full rounded-xl" disabled>
-                    Hamarosan
-                  </Button>
-                )}
+                {item.href === "/admin/delete-requests" || item.href === "/admin/stats" ? (
+  <Button className="w-full rounded-xl" asChild>
+    <a href={item.href}>Megnyitás</a>
+  </Button>
+) : (
+  <Button variant="outline" className="w-full rounded-xl" disabled>
+    Hamarosan
+  </Button>
+)}
               </CardContent>
             </Card>
           );
