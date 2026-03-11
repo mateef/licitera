@@ -456,123 +456,82 @@ async function fillFromImageWithAI() {
             </CardHeader>
 
             <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="title">Cím</Label>
-                <Input
-                  id="title"
-                  placeholder="Pl.: iPhone 13, 128GB, hibátlan"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="h-12 rounded-xl"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Legyen rövid és beszédes. A jó cím több licitet hoz.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="desc">Leírás</Label>
-                <Textarea
-                  id="desc"
-                  placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="min-h-[140px] rounded-xl"
-                />
-              </div>
-
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Kezdőár</Label>
-                  <Input
-                    value={startingPrice}
-                    onChange={(e) => setStartingPrice(e.target.value)}
-                    inputMode="decimal"
-                    className="h-12 rounded-xl"
-                  />
-                </div>
+  <div className="space-y-2 sm:col-span-2">
+    <Label>Képek</Label>
+    <p className="text-xs text-muted-foreground">
+  Tölts fel képet először, és az AI segíthet kitölteni a címet és a leírást.
+</p>
+    <Input
+      type="file"
+      multiple
+      accept="image/*"
+      onChange={(e) => setFiles(e.target.files)}
+      className="h-12 rounded-xl"
+    />
 
-                <div className="space-y-2">
-                  <Label>Licitlépcső</Label>
-                  <Input
-                    value={minIncrement}
-                    onChange={(e) => setMinIncrement(e.target.value)}
-                    inputMode="decimal"
-                    className="h-12 rounded-xl"
-                  />
-                </div>
+    <p className="text-xs text-muted-foreground">
+      Tipp: 3–6 kép ideális, jó fényben, több szögből.
+    </p>
 
-                <div className="space-y-2">
-                  <Label>Időtartam (óra)</Label>
-                  <Input
-                    value={durationHours}
-                    onChange={(e) => setDurationHours(e.target.value)}
-                    inputMode="numeric"
-                    className="h-12 rounded-xl"
-                  />
-                </div>
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="rounded-xl"
+        onClick={fillFromImageWithAI}
+        disabled={aiImageLoading || !files || files.length === 0}
+      >
+        {aiImageLoading ? "AI elemzés folyamatban..." : "✨ AI kitöltés képből"}
+      </Button>
+    </div>
 
-                <div className="space-y-2">
-                  <Label>Villámár (opcionális)</Label>
-                  <Input
-                    value={buyNowPrice}
-                    onChange={(e) => setBuyNowPrice(e.target.value)}
-                    inputMode="decimal"
-                    placeholder="Pl. 35000"
-                    className="h-12 rounded-xl"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Ha megadod, a vevő azonnal lezárhatja vele az aukciót.
-                  </p>
-                </div>
-              </div>
+    <p className="text-xs text-muted-foreground">
+      Az AI megpróbál címet és leírást javasolni az első feltöltött kép alapján.
+    </p>
+  </div>
+</div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-  <Label>Képek</Label>
+<div className="space-y-2">
+  <Label htmlFor="title">Cím</Label>
   <Input
-    type="file"
-    multiple
-    accept="image/*"
-    onChange={(e) => setFiles(e.target.files)}
+    id="title"
+    placeholder="Pl.: iPhone 13, 128GB, hibátlan"
+    value={title}
+    onChange={(e) => setTitle(e.target.value)}
     className="h-12 rounded-xl"
   />
-
   <p className="text-xs text-muted-foreground">
-    Tipp: 3–6 kép ideális, jó fényben, több szögből.
-  </p>
-
-  <Button
-    type="button"
-    variant="outline"
-    className="rounded-xl"
-    onClick={fillFromImageWithAI}
-    disabled={aiImageLoading || !files || files.length === 0}
-  >
-    {aiImageLoading ? "AI elemzés folyamatban..." : "✨ AI kitöltés képből"}
-  </Button>
-
-  <p className="text-xs text-muted-foreground">
-    Az AI megpróbál címet és leírást javasolni az első feltöltött kép alapján.
+    Legyen rövid és beszédes. A jó cím több licitet hoz.
   </p>
 </div>
 
-                <div className="space-y-2">
-                  <Label>Átvételi mód</Label>
-                  <select
-                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
-                    value={deliveryMode}
-                    onChange={(e) => setDeliveryMode(e.target.value)}
-                  >
-                    <option value="">Válassz átvételi módot</option>
-                    {DELIVERY_MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+<div className="space-y-2">
+  <Label htmlFor="desc">Leírás</Label>
+  <Textarea
+    id="desc"
+    placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
+    value={description}
+    onChange={(e) => setDescription(e.target.value)}
+    className="min-h-[140px] rounded-xl"
+  />
+</div>
+
+<div className="space-y-2">
+  <Label>Átvételi mód</Label>
+  <select
+    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+    value={deliveryMode}
+    onChange={(e) => setDeliveryMode(e.target.value)}
+  >
+    <option value="">Válassz átvételi módot</option>
+    {DELIVERY_MODES.map((mode) => (
+      <option key={mode.value} value={mode.value}>
+        {mode.label}
+      </option>
+    ))}
+  </select>
+</div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
