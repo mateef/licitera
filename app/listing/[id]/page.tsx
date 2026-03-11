@@ -12,6 +12,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatHuf } from "@/lib/format";
 import { Clock, Gavel, Heart, ChevronLeft, ImageIcon, MapPin, Truck } from "lucide-react";
@@ -79,6 +90,9 @@ export default function ListingDetailPage() {
 
   const [tick, setTick] = useState(0);
   const [autoMinNext, setAutoMinNext] = useState<boolean>(true);
+
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
 
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
@@ -223,6 +237,40 @@ export default function ListingDetailPage() {
     setBidTouched(false);
     await loadListing();
     await loadBids();
+  }
+
+  async function submitReport() {
+    if (!sessionUserId) {
+      toast.error("Jelentéshez be kell jelentkezni.");
+      return;
+    }
+
+    if (!listing) {
+      toast.error("A hirdetés nem tölthető be.");
+      return;
+    }
+
+    if (!reportReason.trim()) {
+      toast.error("Válassz jelentési okot.");
+      return;
+    }
+
+    const { error } = await supabase.from("listing_reports").insert({
+      listing_id: listing.id,
+      reporter_user_id: sessionUserId,
+      reason: reportReason,
+      details: reportDetails.trim() || null,
+      status: "pending",
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("A jelentést elküldtük.");
+    setReportReason("");
+    setReportDetails("");
   }
 
   void tick;
@@ -654,7 +702,7 @@ export default function ListingDetailPage() {
         </div>
 
         <div className="order-1 lg:order-2 lg:col-span-4">
-            <div className="space-y-4">
+          <div className="space-y-4">
             <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -829,7 +877,7 @@ export default function ListingDetailPage() {
 
             <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
               <CardContent className="pt-6">
-                <div className="grid grid-cols-[1fr,1.35fr,1fr] gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Button variant="outline" className="min-w-0 rounded-xl" asChild>
                     <a className="truncate" href="/listings">
                       Vissza
@@ -860,6 +908,52 @@ export default function ListingDetailPage() {
                       Saját
                     </a>
                   </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="min-w-0 rounded-xl">
+                        Jelentés
+                      </Button>
+                    </AlertDialogTrigger>
+
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Hirdetés jelentése</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Ha szerinted a hirdetés szabályt sért vagy problémás, küldj jelentést az adminnak.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+
+                      <div className="space-y-3">
+                        <select
+                          className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                          value={reportReason}
+                          onChange={(e) => setReportReason(e.target.value)}
+                        >
+                          <option value="">Válassz okot</option>
+                          <option value="hamis_termek">Hamis / félrevezető termék</option>
+                          <option value="tiltott_termek">Tiltott termék</option>
+                          <option value="spam">Spam / duplikált hirdetés</option>
+                          <option value="serto_tartalom">Sértő / nem odaillő tartalom</option>
+                          <option value="egyeb">Egyéb</option>
+                        </select>
+
+                        <textarea
+                          className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
+                          placeholder="Írd le röviden, mi a probléma..."
+                          value={reportDetails}
+                          onChange={(e) => setReportDetails(e.target.value)}
+                        />
+                      </div>
+
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Mégse</AlertDialogCancel>
+                        <AlertDialogAction onClick={submitReport}>
+                          Jelentés elküldése
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </CardContent>
             </Card>
