@@ -44,6 +44,16 @@ type SettlementItem = {
 };
 
 const settlementItems = settlements as SettlementItem[];
+const PAGE_SIZE = 24;
+
+const FEATURED_CATEGORY_NAMES = [
+  { title: "Elektronika", icon: "📱" },
+  { title: "Jármű", icon: "🚗" },
+  { title: "Otthon és kert", icon: "🏡" },
+  { title: "Divat", icon: "👜" },
+  { title: "Sport és szabadidő", icon: "🏂" },
+  { title: "Gyerek és baba", icon: "🧸" },
+];
 
 function readWatchlistIds(): string[] {
   try {
@@ -101,11 +111,92 @@ function buildDescendantIds(allCategories: Category[], rootId: string): string[]
   return Array.from(result);
 }
 
+function SearchableDropdown({
+  label,
+  placeholder,
+  value,
+  onChange,
+  options,
+  disabled = false,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (next: string) => void;
+  options: string[];
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    if (!q) return options.slice(0, 10);
+    return options
+      .filter((item) => item.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [options, value]);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  return (
+    <div className="space-y-2" ref={wrapRef}>
+      <label className="text-sm font-medium text-slate-700">{label}</label>
+
+      <div className="relative">
+        <Input
+          placeholder={placeholder}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            if (!disabled) setOpen(true);
+          }}
+          className="h-11 rounded-xl"
+        />
+
+        {open && !disabled && filtered.length > 0 && (
+          <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+            {filtered.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className="block w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  onChange(item);
+                  setOpen(false);
+                }}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ListingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [listings, setListings] = useState<Listing[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+
   const [q, setQ] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -113,8 +204,10 @@ export default function ListingsPage() {
   const [sort, setSort] = useState<"ending" | "price_desc" | "price_asc" | "new">("ending");
   const [loadError, setLoadError] = useState("");
 
-  const [county, setCounty] = useState("");
-  const [city, setCity] = useState("");
+  const [countyInput, setCountyInput] = useState("");
+  const [cityInput, setCityInput] = useState("");
+
+  const [page, setPage] = useState(1);
 
   const listingsReqIdRef = useRef(0);
 
@@ -132,6 +225,22 @@ export default function ListingsPage() {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  const county = useMemo(() => {
+    return HUNGARIAN_COUNTIES.includes(countyInput as any) ? countyInput : "";
+  }, [countyInput]);
+
+  const availableCities = useMemo(() => {
+    if (!county) return [];
+    return settlementItems
+      .filter((item) => item.county === county)
+      .map((item) => item.city)
+      .sort((a, b) => a.localeCompare(b, "hu"));
+  }, [county]);
+
+  const city = useMemo(() => {
+    return availableCities.includes(cityInput) ? cityInput : "";
+  }, [availableCities, cityInput]);
 
   const catsL1 = useMemo(
     () =>
@@ -178,17 +287,17 @@ export default function ListingsPage() {
     return buildDescendantIds(allCategories, finalCategoryId);
   }, [allCategories, finalCategoryId]);
 
-  const availableCities = useMemo(() => {
-    if (!county) return [];
-    return settlementItems
-      .filter((item) => item.county === county)
-      .map((item) => item.city)
-      .sort((a, b) => a.localeCompare(b, "hu"));
-  }, [county]);
+  const featuredCategoryCards = useMemo(() => {
+    return FEATURED_CATEGORY_NAMES.map((item) => {
+      const match = catsL1.find((c) => c.name === item.title);
+      return {
+        ...item,
+        id: match?.id ?? "",
+      };
+    }).filter((x) => x.id);
+  }, [catsL1]);
 
-  useEffect(() => {
-    setCity("");
-  }, [county]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   function getTimeLeft(date: string) {
     const diff = new Date(date).getTime() - now;
@@ -234,7 +343,8 @@ export default function ListingsPage() {
           min_increment,county,city,delivery_mode,buy_now_price,category_id,
           categories(id,name),
           bids(count)
-        `
+        `,
+          { count: "exact" }
         )
         .eq("is_active", true)
         .gt("ends_at", new Date().toISOString());
@@ -256,12 +366,13 @@ export default function ListingsPage() {
       if (sort === "price_asc") query = query.order("current_price", { ascending: true });
       if (sort === "new") query = query.order("created_at", { ascending: false });
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
 
       if (reqId !== listingsReqIdRef.current) return;
 
       if (error) {
         setListings([]);
+        setTotalCount(0);
         setLoadError(error.message);
         return;
       }
@@ -278,10 +389,15 @@ export default function ListingsPage() {
         );
       }
 
-      setListings(formatted);
+      const start = (page - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+
+      setTotalCount(formatted.length);
+      setListings(formatted.slice(start, end));
     } catch (e: any) {
       if (reqId !== listingsReqIdRef.current) return;
       setListings([]);
+      setTotalCount(0);
       setLoadError(e?.message ?? "Ismeretlen hiba történt a betöltés közben.");
     } finally {
       if (reqId !== listingsReqIdRef.current) return;
@@ -291,6 +407,8 @@ export default function ListingsPage() {
 
   useEffect(() => {
     setQ(searchParams.get("q") ?? "");
+    const pageParam = Number(searchParams.get("page") ?? "1");
+    setPage(Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1);
   }, [searchParams]);
 
   useEffect(() => {
@@ -330,6 +448,14 @@ export default function ListingsPage() {
   }, [catL2]);
 
   useEffect(() => {
+    setCityInput("");
+  }, [countyInput]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, countyInput, cityInput, catL1, catL2, catL3, minPrice, maxPrice, sort]);
+
+  useEffect(() => {
     const t = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
       const trimmed = q.trim();
@@ -337,21 +463,24 @@ export default function ListingsPage() {
       if (trimmed) params.set("q", trimmed);
       else params.delete("q");
 
+      if (page > 1) params.set("page", String(page));
+      else params.delete("page");
+
       router.replace(`/listings?${params.toString()}`);
     }, 250);
 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, page]);
 
   useEffect(() => {
     const t = setTimeout(() => loadListings(), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, finalCategoryId, minPrice, maxPrice, sort, county, city, selectedCategoryIds.join("|")]);
+  }, [q, finalCategoryId, minPrice, maxPrice, sort, county, city, selectedCategoryIds.join("|"), page]);
 
   const hasAnyFilter =
-    !!q.trim() || !!finalCategoryId || !!minPrice || !!maxPrice || !!county || !!city;
+    !!q.trim() || !!finalCategoryId || !!minPrice || !!maxPrice || !!countyInput || !!cityInput;
 
   return (
     <div className="space-y-6">
@@ -372,13 +501,42 @@ export default function ListingsPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm text-slate-700 backdrop-blur">
-              Aktív találatok: <span className="font-semibold text-slate-900">{listings.length}</span>
+              Találatok ezen az oldalon: <span className="font-semibold text-slate-900">{listings.length}</span>
             </div>
           </div>
         </div>
+
+        {featuredCategoryCards.length > 0 && (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {featuredCategoryCards.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setCatL1(item.id);
+                  setCatL2("");
+                  setCatL3("");
+                }}
+                className="flex items-center justify-between rounded-[1.5rem] border border-white/70 bg-white/75 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+                    {item.icon}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-900">{item.title}</div>
+                    <div className="text-sm text-slate-500">Népszerű kategória</div>
+                  </div>
+                </div>
+
+                <div className="text-slate-400">→</div>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <Card className="overflow-hidden rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
             <CardHeader className="pb-3">
@@ -397,38 +555,22 @@ export default function ListingsPage() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Vármegye</label>
-                  <select
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
-                    value={county}
-                    onChange={(e) => setCounty(e.target.value)}
-                  >
-                    <option value="">Összes</option>
-                    {HUNGARIAN_COUNTIES.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableDropdown
+                  label="Vármegye"
+                  placeholder="Kezdd el írni..."
+                  value={countyInput}
+                  onChange={setCountyInput}
+                  options={[...HUNGARIAN_COUNTIES]}
+                />
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Település</label>
-                  <select
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    disabled={!county}
-                  >
-                    <option value="">{county ? "Összes" : "Előbb válassz vármegyét"}</option>
-                    {availableCities.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableDropdown
+                  label="Település"
+                  placeholder={county ? "Kezdd el írni..." : "Előbb válassz vármegyét"}
+                  value={cityInput}
+                  onChange={setCityInput}
+                  options={availableCities}
+                  disabled={!county}
+                />
               </div>
 
               <div className="space-y-2">
@@ -508,13 +650,14 @@ export default function ListingsPage() {
                 className="h-11 w-full rounded-xl"
                 onClick={() => {
                   setQ("");
-                  setCounty("");
-                  setCity("");
+                  setCountyInput("");
+                  setCityInput("");
                   setCatL1("");
                   setCatL2("");
                   setCatL3("");
                   setMinPrice("");
                   setMaxPrice("");
+                  setPage(1);
                 }}
               >
                 Szűrők törlése
@@ -532,15 +675,15 @@ export default function ListingsPage() {
                 </Badge>
               )}
 
-              {county && (
-                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCounty("")}>
-                  Vármegye: {county} ✕
+              {countyInput && (
+                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCountyInput("")}>
+                  Vármegye: {countyInput} ✕
                 </Badge>
               )}
 
-              {city && (
-                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCity("")}>
-                  Település: {city} ✕
+              {cityInput && (
+                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCityInput("")}>
+                  Település: {cityInput} ✕
                 </Badge>
               )}
 
@@ -584,13 +727,14 @@ export default function ListingsPage() {
                   className="cursor-pointer rounded-full px-3 py-1"
                   onClick={() => {
                     setQ("");
-                    setCounty("");
-                    setCity("");
+                    setCountyInput("");
+                    setCityInput("");
                     setCatL1("");
                     setCatL2("");
                     setCatL3("");
                     setMinPrice("");
                     setMaxPrice("");
+                    setPage(1);
                   }}
                 >
                   Mindent törlök
@@ -626,7 +770,7 @@ export default function ListingsPage() {
 
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
+              Array.from({ length: PAGE_SIZE }).map((_, i) => (
                 <Card key={i} className="overflow-hidden rounded-[1.75rem] border-slate-200/80">
                   <Skeleton className="h-52 w-full" />
                   <CardHeader className="space-y-3">
@@ -653,13 +797,14 @@ export default function ListingsPage() {
                       variant="outline"
                       onClick={() => {
                         setQ("");
-                        setCounty("");
-                        setCity("");
+                        setCountyInput("");
+                        setCityInput("");
                         setCatL1("");
                         setCatL2("");
                         setCatL3("");
                         setMinPrice("");
                         setMaxPrice("");
+                        setPage(1);
                       }}
                     >
                       Szűrők törlése
@@ -806,6 +951,33 @@ export default function ListingsPage() {
               })
             )}
           </div>
+
+          {!loading && totalPages > 1 && (
+            <div className="flex flex-col items-center justify-between gap-3 rounded-[1.5rem] border border-slate-200/80 bg-white/85 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.05)] sm:flex-row">
+              <div className="text-sm text-slate-600">
+                Oldal <span className="font-semibold text-slate-900">{page}</span> / {totalPages}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  disabled={page <= 1}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                >
+                  Előző
+                </Button>
+
+                <Button
+                  className="rounded-xl"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                >
+                  Következő
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
