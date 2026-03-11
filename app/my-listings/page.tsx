@@ -9,7 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type Listing = {
   id: string;
@@ -20,15 +30,15 @@ type Listing = {
   image_urls: string[] | null;
   image_paths: string[] | null;
   bid_count?: number;
+  renewal_count: number;
 };
 
 export default function MyListingsPage() {
   const [uid, setUid] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-    const [deleteReasons, setDeleteReasons] = useState<Record<string, string>>({});
+  const [deleteReasons, setDeleteReasons] = useState<Record<string, string>>({});
 
-  // hydrate-safe "now"
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
     setNow(Date.now());
@@ -48,23 +58,31 @@ export default function MyListingsPage() {
       const h = hours % 24;
       return `${days} nap ${h} óra`;
     }
+
     return `${hours} óra ${minutes} perc`;
   }
-  function canDeleteDirectly(listing: Listing) {
-  const createdAt = new Date(listing.created_at).getTime();
-  const oneHourLater = createdAt + 60 * 60 * 1000;
-  const stillWithinOneHour = Date.now() <= oneHourLater;
-  const hasNoBids = (listing.bid_count ?? 0) === 0;
-  const isStillActive = new Date(listing.ends_at).getTime() > Date.now();
 
-  return stillWithinOneHour && hasNoBids && isStillActive;
-}
-function needsDeleteRequest(listing: Listing) {
-  return !canDeleteDirectly(listing);
-}
+  function canDeleteDirectly(listing: Listing) {
+    const createdAt = new Date(listing.created_at).getTime();
+    const oneHourLater = createdAt + 60 * 60 * 1000;
+    const stillWithinOneHour = Date.now() <= oneHourLater;
+    const hasNoBids = (listing.bid_count ?? 0) === 0;
+    const isStillActive = new Date(listing.ends_at).getTime() > Date.now();
+
+    return stillWithinOneHour && hasNoBids && isStillActive;
+  }
+
+  function canRenewListing(listing: Listing) {
+    const isExpired = new Date(listing.ends_at).getTime() <= Date.now();
+    const hasNoBids = (listing.bid_count ?? 0) === 0;
+    const canStillRenew = (listing.renewal_count ?? 0) < 2;
+
+    return isExpired && hasNoBids && canStillRenew;
+  }
 
   async function init() {
     setLoading(true);
+
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id ?? null;
     setUid(userId);
@@ -80,10 +98,10 @@ function needsDeleteRequest(listing: Listing) {
 
   async function loadMyListings(userId: string) {
     const { data, error } = await supabase
-        .from("listings")
-        .select("id,title,current_price,ends_at,created_at,image_urls,image_paths,bids(count)")
-         .eq("user_id", userId)
-         .order("created_at", { ascending: false });
+      .from("listings")
+      .select("id,title,current_price,ends_at,created_at,image_urls,image_paths,renewal_count,bids(count)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
     if (error) {
       toast.error(error.message);
@@ -93,12 +111,13 @@ function needsDeleteRequest(listing: Listing) {
     }
 
     const formatted =
-  data?.map((item: any) => ({
-    ...item,
-    bid_count: item.bids?.[0]?.count ?? 0,
-  })) ?? [];
+      data?.map((item: any) => ({
+        ...item,
+        bid_count: item.bids?.[0]?.count ?? 0,
+        renewal_count: item.renewal_count ?? 0,
+      })) ?? [];
 
-setListings(formatted);
+    setListings(formatted);
     setLoading(false);
   }
 
@@ -106,7 +125,6 @@ setListings(formatted);
     if (!uid) return;
 
     try {
-      // 1) lekérjük a listing image_paths-ait
       const { data: row, error: fetchErr } = await supabase
         .from("listings")
         .select("id,image_paths")
@@ -120,7 +138,6 @@ setListings(formatted);
 
       const paths: string[] = (row as any)?.image_paths ?? [];
 
-      // 2) töröljük a storage objektumokat (ha vannak)
       if (paths.length > 0) {
         const { error: rmErr } = await supabase.storage.from("listing-images").remove(paths);
         if (rmErr) {
@@ -129,7 +146,6 @@ setListings(formatted);
         }
       }
 
-      // 3) töröljük a DB rekordot (RLS úgyis védi, hogy csak saját)
       const { error: delErr } = await supabase.from("listings").delete().eq("id", listingId);
       if (delErr) {
         toast.error(delErr.message);
@@ -142,30 +158,47 @@ setListings(formatted);
       toast.error("Váratlan hiba történt törlés közben.");
     }
   }
+
   async function createDeleteRequest(listingId: string, reason: string) {
-  if (!uid) return;
+    if (!uid) return;
 
-  const trimmedReason = reason.trim();
+    const trimmedReason = reason.trim();
 
-  if (!trimmedReason) {
-    toast.error("Írd le, miért szeretnéd törölni az aukciót.");
-    return;
+    if (!trimmedReason) {
+      toast.error("Írd le, miért szeretnéd törölni az aukciót.");
+      return;
+    }
+
+    const { error } = await supabase.from("listing_delete_requests").insert({
+      listing_id: listingId,
+      user_id: uid,
+      reason: trimmedReason,
+      status: "pending",
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Törlési kérelmed elküldve.");
   }
 
-  const { error } = await supabase.from("listing_delete_requests").insert({
-    listing_id: listingId,
-    user_id: uid,
-    reason: trimmedReason,
-    status: "pending",
-  });
+  async function renewListing(listingId: string) {
+    if (!uid) return;
 
-  if (error) {
-    toast.error(error.message);
-    return;
+    const { error } = await supabase.rpc("renew_listing", {
+      p_listing_id: listingId,
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Aukció sikeresen megújítva.");
+    await loadMyListings(uid);
   }
-
-  toast.success("Törlési kérelmed elküldve.");
-}
 
   useEffect(() => {
     init();
@@ -181,12 +214,11 @@ setListings(formatted);
 
   return (
     <div className="space-y-6">
-      {/* Header row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Saját aukciók</h1>
           <p className="text-sm text-muted-foreground">
-            Itt látod az általad létrehozott aukciókat, és innen tudsz törölni.
+            Itt látod az általad létrehozott aukciókat, és innen tudsz törölni vagy megújítani.
           </p>
         </div>
 
@@ -200,14 +232,12 @@ setListings(formatted);
         </div>
       </div>
 
-      {/* Summary */}
       <div className="flex flex-wrap gap-2">
         <Badge variant="secondary">Összesen: {listings.length}</Badge>
         <Badge>Aktív: {activeCount}</Badge>
         <Badge variant="outline">Lejárt: {endedCount}</Badge>
       </div>
 
-      {/* Not logged in */}
       {!uid && !loading && (
         <Card>
           <CardHeader>
@@ -225,7 +255,6 @@ setListings(formatted);
         </Card>
       )}
 
-      {/* List */}
       {uid && (
         <div className="grid gap-4 sm:grid-cols-2">
           {loading ? (
@@ -246,7 +275,7 @@ setListings(formatted);
             <Card className="sm:col-span-2">
               <CardHeader>
                 <CardTitle className="text-base">Még nincs aukciód</CardTitle>
-                <CardDescription>Indíts egyet, és jelenni fog itt.</CardDescription>
+                <CardDescription>Indíts egyet, és meg fog jelenni itt.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 <Button asChild>
@@ -263,6 +292,7 @@ setListings(formatted);
               const isActive = ends > now;
               const cover = l.image_urls?.[0] ?? null;
               const directDeleteAllowed = canDeleteDirectly(l);
+              const renewAllowed = canRenewListing(l);
 
               return (
                 <Card key={l.id} className="overflow-hidden transition hover:shadow-md">
@@ -301,84 +331,98 @@ setListings(formatted);
                       <span className="text-muted-foreground">Jelenlegi licit</span>
                       <span className="font-semibold">{formatHuf(l.current_price)}</span>
                     </div>
+
                     <div className="text-xs text-muted-foreground">
-  {(l.bid_count ?? 0) === 0
-    ? "Még nincs licit."
-    : `${l.bid_count} licit érkezett.`}
-</div>
+                      {(l.bid_count ?? 0) === 0 ? "Még nincs licit." : `${l.bid_count} licit érkezett.`}
+                    </div>
 
-<div className="text-xs text-muted-foreground">
-  {directDeleteAllowed
-    ? "Közvetlenül törölhető: 1 órán belül, licit nélkül."
-    : "Közvetlen törlés nem elérhető, csak admin kérelmen keresztül."}
-</div>
+                    <div className="text-xs text-muted-foreground">
+                      {directDeleteAllowed
+                        ? "Közvetlenül törölhető: 1 órán belül, licit nélkül."
+                        : "Közvetlen törlés nem elérhető, csak admin kérelmen keresztül."}
+                    </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="text-xs text-muted-foreground">
+                      Megújítások: {l.renewal_count ?? 0} / 2
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       <Button variant="outline" asChild>
                         <a href={`/listing/${l.id}`}>Megnyitás</a>
                       </Button>
 
+                      {renewAllowed ? (
+                        <Button variant="secondary" onClick={() => renewListing(l.id)}>
+                          Megújítás
+                        </Button>
+                      ) : (
+                        <Button variant="secondary" disabled>
+                          Megújítás
+                        </Button>
+                      )}
+
                       {directDeleteAllowed ? (
-  <AlertDialog>
-    <AlertDialogTrigger asChild>
-      <Button variant="destructive">Törlés</Button>
-    </AlertDialogTrigger>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Biztosan törlöd?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Az aukció és a feltöltött képek is törlődnek. Ez a művelet nem visszavonható.
-          Közvetlen törlés csak a létrehozást követő 1 órán belül és licit nélkül engedélyezett.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel>Mégse</AlertDialogCancel>
-        <AlertDialogAction
-          onClick={() => deleteListing(l.id)}
-          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-        >
-          Törlés
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-) : (
-  <AlertDialog>
-    <AlertDialogTrigger asChild>
-      <Button variant="secondary">Törlési kérelem</Button>
-    </AlertDialogTrigger>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Törlési kérelem küldése</AlertDialogTitle>
-        <AlertDialogDescription>
-          Ez az aukció már nem törölhető közvetlenül.
-          Írd le röviden, miért szeretnéd törölni, és az admin elbírálja a kérelmet.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive">Törlés</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Biztosan törlöd?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Az aukció és a feltöltött képek is törlődnek. Ez a művelet nem
+                                visszavonható. Közvetlen törlés csak a létrehozást követő 1 órán belül
+                                és licit nélkül engedélyezett.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Mégse</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteListing(l.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Törlés
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      ) : (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="secondary">Törlési kérelem</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Törlési kérelem küldése</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Ez az aukció már nem törölhető közvetlenül. Írd le röviden, miért
+                                szeretnéd törölni, és az admin elbírálja a kérelmet.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
 
-      <textarea
-        className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
-        placeholder="Pl. rossz terméket töltöttem fel, hibás adatok szerepelnek, a termék megsérült..."
-        value={deleteReasons[l.id] ?? ""}
-        onChange={(e) =>
-          setDeleteReasons((prev) => ({
-            ...prev,
-            [l.id]: e.target.value,
-          }))
-        }
-      />
+                            <textarea
+                              className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
+                              placeholder="Pl. rossz terméket töltöttem fel, hibás adatok szerepelnek, a termék megsérült..."
+                              value={deleteReasons[l.id] ?? ""}
+                              onChange={(e) =>
+                                setDeleteReasons((prev) => ({
+                                  ...prev,
+                                  [l.id]: e.target.value,
+                                }))
+                              }
+                            />
 
-      <AlertDialogFooter>
-        <AlertDialogCancel>Mégse</AlertDialogCancel>
-        <AlertDialogAction
-          onClick={() => createDeleteRequest(l.id, deleteReasons[l.id] ?? "")}
-        >
-          Kérelem küldése
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)}
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Mégse</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => createDeleteRequest(l.id, deleteReasons[l.id] ?? "")}
+                              >
+                                Kérelem küldése
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
