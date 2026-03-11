@@ -84,6 +84,8 @@ export default function ListingDetailPage() {
   const [bidAmount, setBidAmount] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [watched, setWatched] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+const [loadError, setLoadError] = useState("");
 
   const [bidError, setBidError] = useState<string>("");
   const [bidTouched, setBidTouched] = useState(false);
@@ -145,23 +147,29 @@ export default function ListingDetailPage() {
   }
 
   async function loadListing() {
-    const { data, error } = await supabase
-      .from("listings")
-      .select(
-        "id,title,description,current_price,starting_price,ends_at,closed_at,final_price,winner_user_id,image_urls,user_id,is_active,min_increment,county,city,delivery_mode,buy_now_price,categories(name)"
-      )
-      .eq("id", listingId)
-      .single();
+  setLoadError("");
 
-    if (error) return toast.error(error.message);
+  const { data, error } = await supabase
+    .from("listings")
+    .select(
+      "id,title,description,current_price,starting_price,ends_at,closed_at,final_price,winner_user_id,image_urls,user_id,is_active,min_increment,county,city,delivery_mode,buy_now_price,categories(name)"
+    )
+    .eq("id", listingId)
+    .single();
 
-    setListing(data as any);
-
-    const first = (data as any)?.image_urls?.[0] ?? null;
-    setSelectedImage((prev) => prev ?? first);
-
-    await loadRelated((data as any)?.categories?.name ?? null);
+  if (error) {
+    setListing(null);
+    setLoadError(error.message || "Nem sikerült betölteni a hirdetést.");
+    return;
   }
+
+  setListing(data as any);
+
+  const first = (data as any)?.image_urls?.[0] ?? null;
+  setSelectedImage(first);
+
+  await loadRelated((data as any)?.categories?.name ?? null);
+}
 
   async function loadBids() {
     const { data, error } = await supabase
@@ -304,48 +312,70 @@ export default function ListingDetailPage() {
   }
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("watchlist") || "[]";
-      const arr = JSON.parse(raw) as string[];
-      setWatched(arr.includes(listingId));
-    } catch {
-      setWatched(false);
-    }
+  let mounted = true;
+
+  async function initPage() {
+    setPageLoading(true);
+    setLoadError("");
 
     try {
-      const raw = localStorage.getItem("bid_auto_min_next");
-      if (raw === null) {
-        setAutoMinNext(true);
-      } else {
-        setAutoMinNext(raw === "1");
+      try {
+        const raw = localStorage.getItem("watchlist") || "[]";
+        const arr = JSON.parse(raw) as string[];
+        if (mounted) setWatched(arr.includes(listingId));
+      } catch {
+        if (mounted) setWatched(false);
       }
-    } catch {
-      setAutoMinNext(true);
+
+      try {
+        const raw = localStorage.getItem("bid_auto_min_next");
+        if (raw === null) {
+          if (mounted) setAutoMinNext(true);
+        } else {
+          if (mounted) setAutoMinNext(raw === "1");
+        }
+      } catch {
+        if (mounted) setAutoMinNext(true);
+      }
+
+      await loadSession();
+      await loadListing();
+      await loadBids();
+    } catch (e: any) {
+      if (mounted) {
+        setLoadError(e?.message ?? "Váratlan hiba történt.");
+      }
+    } finally {
+      if (mounted) {
+        setPageLoading(false);
+      }
     }
+  }
 
+  initPage();
+
+  const { data: authSub } = supabase.auth.onAuthStateChange(() => {
     loadSession();
-    loadListing();
-    loadBids();
+  });
 
-    const { data: authSub } = supabase.auth.onAuthStateChange(() => loadSession());
+  const channel = supabase
+    .channel(`realtime-listing-${listingId}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "bids" }, () => {
+      loadListing();
+      loadBids();
+    })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "listings" }, () => {
+      loadListing();
+    })
+    .subscribe();
 
-    const channel = supabase
-      .channel(`realtime-listing-${listingId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "bids" }, () => {
-        loadListing();
-        loadBids();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "listings" }, () => {
-        loadListing();
-      })
-      .subscribe();
-
-    return () => {
-      authSub.subscription.unsubscribe();
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listingId]);
+  return () => {
+    mounted = false;
+    authSub.subscription.unsubscribe();
+    supabase.removeChannel(channel);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [listingId]);
 
   useEffect(() => {
     if (!autoMinNext) return;
@@ -372,14 +402,59 @@ export default function ListingDetailPage() {
     return () => clearInterval(t);
   }, []);
 
-  if (!listing) {
-    return (
-      <div className="space-y-4">
-        <div className="h-10 w-64 rounded-2xl bg-muted" />
-        <div className="h-[520px] rounded-[2rem] bg-muted" />
-      </div>
-    );
-  }
+  if (pageLoading) {
+  return (
+    <div className="space-y-4">
+      <div className="h-10 w-64 rounded-2xl bg-muted" />
+      <div className="h-[520px] rounded-[2rem] bg-muted" />
+    </div>
+  );
+}
+
+if (loadError) {
+  return (
+    <Card className="rounded-[1.75rem] border-red-200 bg-red-50/70 shadow-none">
+      <CardHeader>
+        <CardTitle>Nem sikerült betölteni a hirdetést</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm text-red-700">
+        <div>{loadError}</div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setPageLoading(true);
+              await loadListing();
+              await loadBids();
+              setPageLoading(false);
+            }}
+          >
+            Újrapróbálom
+          </Button>
+
+          <Button asChild>
+            <a href="/listings">Vissza a listára</a>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+if (!listing) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>A hirdetés nem található</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Button asChild>
+          <a href="/listings">Vissza a listára</a>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
   const cover = selectedImage ?? listing.image_urls?.[0] ?? null;
 
