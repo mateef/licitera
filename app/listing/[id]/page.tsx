@@ -14,7 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { formatHuf } from "@/lib/format";
-import { Clock, Gavel, Heart, ChevronLeft, ImageIcon } from "lucide-react";
+import { Clock, Gavel, Heart, ChevronLeft, ImageIcon, MapPin, Truck } from "lucide-react";
+import { DELIVERY_MODES } from "@/lib/hungary";
 
 type Listing = {
   id: string;
@@ -30,6 +31,10 @@ type Listing = {
   user_id: string | null;
   is_active: boolean;
   min_increment: number;
+  county: string;
+  city: string;
+  delivery_mode: string;
+  buy_now_price: number | null;
   categories: { name: string } | null;
 };
 
@@ -47,8 +52,16 @@ type RelatedListing = {
   ends_at: string;
   image_urls: string[] | null;
   min_increment: number;
+  county: string;
+  city: string;
+  delivery_mode: string;
+  buy_now_price: number | null;
   categories: { name: string } | null;
 };
+
+function getDeliveryModeLabel(value: string) {
+  return DELIVERY_MODES.find((x) => x.value === value)?.label ?? value;
+}
 
 export default function ListingDetailPage() {
   const params = useParams<{ id: string }>();
@@ -97,7 +110,9 @@ export default function ListingDetailPage() {
 
     const { data, error } = await supabase
       .from("listings")
-      .select("id,title,current_price,ends_at,image_urls,min_increment,categories(name)")
+      .select(
+        "id,title,current_price,ends_at,image_urls,min_increment,county,city,delivery_mode,buy_now_price,categories(name)"
+      )
       .eq("is_active", true)
       .gt("ends_at", nowIso)
       .neq("id", listingId)
@@ -119,7 +134,7 @@ export default function ListingDetailPage() {
     const { data, error } = await supabase
       .from("listings")
       .select(
-        "id,title,description,current_price,starting_price,ends_at,closed_at,final_price,winner_user_id,image_urls,user_id,is_active,min_increment,categories(name)"
+        "id,title,description,current_price,starting_price,ends_at,closed_at,final_price,winner_user_id,image_urls,user_id,is_active,min_increment,county,city,delivery_mode,buy_now_price,categories(name)"
       )
       .eq("id", listingId)
       .single();
@@ -343,6 +358,11 @@ export default function ListingDetailPage() {
                   Saját aukció
                 </Badge>
               )}
+              {listing.buy_now_price ? (
+                <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
+                  Villámár: {formatHuf(listing.buy_now_price)}
+                </Badge>
+              ) : null}
             </div>
 
             <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
@@ -356,6 +376,18 @@ export default function ListingDetailPage() {
               </div>
               <div className="font-medium text-slate-900">
                 Hátralévő idő: {timeLeftText(listing.ends_at)}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-slate-700">
+                <MapPin className="h-4 w-4" />
+                {listing.county} · {listing.city}
+              </div>
+
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-slate-700">
+                <Truck className="h-4 w-4" />
+                {getDeliveryModeLabel(listing.delivery_mode)}
               </div>
             </div>
           </div>
@@ -390,7 +422,7 @@ export default function ListingDetailPage() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-12">
-        <div className="space-y-6 lg:col-span-8">
+        <div className="order-2 space-y-6 lg:order-1 lg:col-span-8">
           <Card className="overflow-hidden rounded-[2rem] border-slate-200/80 shadow-[0_20px_50px_rgba(15,23,42,0.06)]">
             <CardContent className="p-0">
               {cover ? (
@@ -441,7 +473,7 @@ export default function ListingDetailPage() {
                 <CardHeader>
                   <CardTitle className="text-lg">Leírás</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                   {listing.description ? (
                     <p className="whitespace-pre-line text-sm leading-7 text-slate-700 sm:text-base">
                       {listing.description}
@@ -449,6 +481,31 @@ export default function ListingDetailPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">Nincs leírás.</p>
                   )}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Helyszín</div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        {listing.county} · {listing.city}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Átvételi mód</div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        {getDeliveryModeLabel(listing.delivery_mode)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {listing.buy_now_price ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-emerald-700">Villámár</div>
+                      <div className="mt-1 text-xl font-bold text-emerald-900">
+                        {formatHuf(listing.buy_now_price)}
+                      </div>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -531,7 +588,7 @@ export default function ListingDetailPage() {
                             <div className="h-40 w-full bg-muted" />
                           )}
 
-                          <div className="px-5 pt-4 flex items-center gap-2">
+                          <div className="px-5 pt-4 flex flex-wrap items-center gap-2">
                             {r.categories?.name ? (
                               <Badge variant="secondary" className="text-xs">
                                 {r.categories.name}
@@ -552,7 +609,7 @@ export default function ListingDetailPage() {
                             </CardTitle>
                           </CardHeader>
 
-                          <CardContent className="space-y-2 text-sm">
+                          <CardContent className="space-y-3 text-sm">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Jelenlegi licit</span>
                               <span className="font-semibold">{formatHuf(r.current_price)}</span>
@@ -562,6 +619,19 @@ export default function ListingDetailPage() {
                               <span className="text-muted-foreground">Következő minimum</span>
                               <span className="font-medium">{formatHuf(minNext)}</span>
                             </div>
+
+                            <div className="text-xs text-slate-500">
+                              {r.county} · {r.city}
+                            </div>
+
+                            {r.buy_now_price ? (
+                              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                                <span className="text-xs text-emerald-700">Villámár: </span>
+                                <span className="font-semibold text-emerald-900">
+                                  {formatHuf(r.buy_now_price)}
+                                </span>
+                              </div>
+                            ) : null}
 
                             <div className="flex items-center justify-between">
                               <span className="text-muted-foreground flex items-center gap-1">
@@ -583,8 +653,8 @@ export default function ListingDetailPage() {
           )}
         </div>
 
-        <div className="lg:col-span-4">
-          <div className="space-y-4 lg:sticky lg:top-24">
+        <div className="order-1 lg:order-2 lg:col-span-4">
+            <div className="space-y-4">
             <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -622,6 +692,29 @@ export default function ListingDetailPage() {
                     <div className="text-xs uppercase tracking-wide text-slate-500">Hátralévő idő</div>
                     <div className="mt-1 font-semibold text-slate-900">{timeLeftText(listing.ends_at)}</div>
                   </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Helyszín</div>
+                    <div className="mt-1 font-semibold text-slate-900">
+                      {listing.county} · {listing.city}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Átvételi mód</div>
+                    <div className="mt-1 font-semibold text-slate-900">
+                      {getDeliveryModeLabel(listing.delivery_mode)}
+                    </div>
+                  </div>
+
+                  {listing.buy_now_price ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-emerald-700">Villámár</div>
+                      <div className="mt-1 text-xl font-bold text-emerald-900">
+                        {formatHuf(listing.buy_now_price)}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {status.ended ? (

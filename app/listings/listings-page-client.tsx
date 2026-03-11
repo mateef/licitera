@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import settlements from "@/data/hungary-settlements.json";
+import { HUNGARIAN_COUNTIES, DELIVERY_MODES } from "@/lib/hungary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +24,11 @@ type Listing = {
   min_increment: number;
   bid_count?: number;
   categories: { id: string; name: string } | null;
+  county: string;
+  city: string;
+  delivery_mode: string;
+  buy_now_price: number | null;
+  category_id?: string | null;
 };
 
 type Category = {
@@ -30,6 +37,13 @@ type Category = {
   parent_id: string | null;
   sort_order: number | null;
 };
+
+type SettlementItem = {
+  city: string;
+  county: string;
+};
+
+const settlementItems = settlements as SettlementItem[];
 
 function readWatchlistIds(): string[] {
   try {
@@ -55,6 +69,34 @@ function toggleWatchlistId(id: string): { watched: boolean; ids: string[] } {
   return { watched: !watched, ids: next };
 }
 
+function getDeliveryModeLabel(value: string) {
+  return DELIVERY_MODES.find((x) => x.value === value)?.label ?? value;
+}
+
+function buildDescendantIds(allCategories: Category[], rootId: string): string[] {
+  const result = new Set<string>();
+  const childrenByParent = new Map<string, string[]>();
+
+  for (const cat of allCategories) {
+    if (!cat.parent_id) continue;
+    const prev = childrenByParent.get(cat.parent_id) ?? [];
+    prev.push(cat.id);
+    childrenByParent.set(cat.parent_id, prev);
+  }
+
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    result.add(current);
+    const children = childrenByParent.get(current) ?? [];
+    for (const childId of children) {
+      if (!result.has(childId)) stack.push(childId);
+    }
+  }
+
+  return Array.from(result);
+}
+
 export default function ListingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,20 +107,17 @@ export default function ListingsPage() {
   const [maxPrice, setMaxPrice] = useState("");
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<"ending" | "price_desc" | "price_asc" | "new">("ending");
-  const [loadError, setLoadError] = useState<string>("");
+  const [loadError, setLoadError] = useState("");
+
+  const [county, setCounty] = useState("");
+  const [city, setCity] = useState("");
 
   const listingsReqIdRef = useRef(0);
 
-  const [catsL1, setCatsL1] = useState<Category[]>([]);
-  const [catsL2, setCatsL2] = useState<Category[]>([]);
-  const [catsL3, setCatsL3] = useState<Category[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [catL1, setCatL1] = useState("");
   const [catL2, setCatL2] = useState("");
   const [catL3, setCatL3] = useState("");
-
-  const finalCategoryId = useMemo(() => {
-    return catL3 || catL2 || catL1 || "";
-  }, [catL1, catL2, catL3]);
 
   const [mounted, setMounted] = useState(false);
   const [watchIds, setWatchIds] = useState<string[]>([]);
@@ -89,6 +128,49 @@ export default function ListingsPage() {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  const catsL1 = useMemo(
+    () =>
+      allCategories
+        .filter((c) => c.parent_id === null)
+        .sort((a, b) => (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.name.localeCompare(b.name, "hu")),
+    [allCategories]
+  );
+
+  const catsL2 = useMemo(
+    () =>
+      allCategories
+        .filter((c) => c.parent_id === catL1)
+        .sort((a, b) => (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.name.localeCompare(b.name, "hu")),
+    [allCategories, catL1]
+  );
+
+  const catsL3 = useMemo(
+    () =>
+      allCategories
+        .filter((c) => c.parent_id === catL2)
+        .sort((a, b) => (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.name.localeCompare(b.name, "hu")),
+    [allCategories, catL2]
+  );
+
+  const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
+
+  const selectedCategoryIds = useMemo(() => {
+    if (!finalCategoryId) return [];
+    return buildDescendantIds(allCategories, finalCategoryId);
+  }, [allCategories, finalCategoryId]);
+
+  const availableCities = useMemo(() => {
+    if (!county) return [];
+    return settlementItems
+      .filter((item) => item.county === county)
+      .map((item) => item.city)
+      .sort((a, b) => a.localeCompare(b, "hu"));
+  }, [county]);
+
+  useEffect(() => {
+    setCity("");
+  }, [county]);
 
   function getTimeLeft(date: string) {
     const diff = new Date(date).getTime() - now;
@@ -105,30 +187,19 @@ export default function ListingsPage() {
     return `${hours} óra ${minutes} perc`;
   }
 
-  async function loadLevel1() {
-    const { data } = await supabase
-      .from("categories")
-      .select("id,name,parent_id,sort_order")
-      .is("parent_id", null)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    setCatsL1((data ?? []) as Category[]);
-  }
-
-  async function loadChildren(parentId: string) {
-    const { data } = await supabase
-      .from("categories")
-      .select("id,name,parent_id,sort_order")
-      .eq("parent_id", parentId)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    return (data ?? []) as Category[];
-  }
-
   async function loadCategories() {
-    await loadLevel1();
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id,name,parent_id,sort_order")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (error) {
+      setAllCategories([]);
+      return;
+    }
+
+    setAllCategories((data ?? []) as Category[]);
   }
 
   async function loadListings() {
@@ -142,7 +213,7 @@ export default function ListingsPage() {
         .select(
           `
           id,title,description,current_price,ends_at,image_urls,
-          min_increment,
+          min_increment,county,city,delivery_mode,buy_now_price,category_id,
           categories(id,name),
           bids(count)
         `
@@ -152,7 +223,9 @@ export default function ListingsPage() {
 
       const qq = q.trim();
       if (qq) query = query.ilike("title", `%${qq}%`);
-      if (finalCategoryId) query = query.eq("category_id", finalCategoryId);
+
+      if (county) query = query.eq("county", county);
+      if (city) query = query.eq("city", city);
 
       const minP = Number(minPrice);
       if (minPrice && !Number.isNaN(minP)) query = query.gte("current_price", minP);
@@ -175,11 +248,15 @@ export default function ListingsPage() {
         return;
       }
 
-      const formatted =
+      let formatted =
         data?.map((l: any) => ({
           ...l,
           bid_count: l.bids?.[0]?.count ?? 0,
         })) ?? [];
+
+      if (selectedCategoryIds.length > 0) {
+        formatted = formatted.filter((l: any) => l.category_id && selectedCategoryIds.includes(l.category_id));
+      }
 
       setListings(formatted);
     } catch (e: any) {
@@ -223,33 +300,12 @@ export default function ListingsPage() {
   }, []);
 
   useEffect(() => {
-    async function run() {
-      setCatsL2([]);
-      setCatsL3([]);
-      setCatL2("");
-      setCatL3("");
-
-      if (!catL1) return;
-
-      const children = await loadChildren(catL1);
-      setCatsL2(children);
-    }
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setCatL2("");
+    setCatL3("");
   }, [catL1]);
 
   useEffect(() => {
-    async function run() {
-      setCatsL3([]);
-      setCatL3("");
-
-      if (!catL2) return;
-
-      const children = await loadChildren(catL2);
-      setCatsL3(children);
-    }
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setCatL3("");
   }, [catL2]);
 
   useEffect(() => {
@@ -271,9 +327,10 @@ export default function ListingsPage() {
     const t = setTimeout(() => loadListings(), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, finalCategoryId, minPrice, maxPrice, sort]);
+  }, [q, finalCategoryId, minPrice, maxPrice, sort, county, city, selectedCategoryIds.join("|")]);
 
-  const hasAnyFilter = !!q.trim() || !!finalCategoryId || !!minPrice || !!maxPrice;
+  const hasAnyFilter =
+    !!q.trim() || !!finalCategoryId || !!minPrice || !!maxPrice || !!county || !!city;
 
   return (
     <div className="space-y-6">
@@ -316,6 +373,41 @@ export default function ListingsPage() {
                   onChange={(e) => setQ(e.target.value)}
                   className="h-11 rounded-xl"
                 />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Vármegye</label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                    value={county}
+                    onChange={(e) => setCounty(e.target.value)}
+                  >
+                    <option value="">Összes</option>
+                    {HUNGARIAN_COUNTIES.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Település</label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    disabled={!county}
+                  >
+                    <option value="">{county ? "Összes" : "Előbb válassz vármegyét"}</option>
+                    {availableCities.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -395,6 +487,8 @@ export default function ListingsPage() {
                 className="h-11 w-full rounded-xl"
                 onClick={() => {
                   setQ("");
+                  setCounty("");
+                  setCity("");
                   setCatL1("");
                   setCatL2("");
                   setCatL3("");
@@ -414,6 +508,18 @@ export default function ListingsPage() {
               {q && (
                 <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setQ("")}>
                   Keresés: {q} ✕
+                </Badge>
+              )}
+
+              {county && (
+                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCounty("")}>
+                  Vármegye: {county} ✕
+                </Badge>
+              )}
+
+              {city && (
+                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCity("")}>
+                  Település: {city} ✕
                 </Badge>
               )}
 
@@ -457,6 +563,8 @@ export default function ListingsPage() {
                   className="cursor-pointer rounded-full px-3 py-1"
                   onClick={() => {
                     setQ("");
+                    setCounty("");
+                    setCity("");
                     setCatL1("");
                     setCatL2("");
                     setCatL3("");
@@ -524,6 +632,8 @@ export default function ListingsPage() {
                       variant="outline"
                       onClick={() => {
                         setQ("");
+                        setCounty("");
+                        setCity("");
                         setCatL1("");
                         setCatL2("");
                         setCatL3("");
@@ -594,11 +704,22 @@ export default function ListingsPage() {
                     </div>
 
                     <CardHeader className="space-y-3 pb-3">
-                      <CardTitle className="line-clamp-2 text-lg leading-6">
-                        <a href={`/listing/${l.id}`} className="transition hover:text-primary">
-                          {l.title}
-                        </a>
-                      </CardTitle>
+                      <div className="space-y-2">
+                        <CardTitle className="line-clamp-2 text-lg leading-6">
+                          <a href={`/listing/${l.id}`} className="transition hover:text-primary">
+                            {l.title}
+                          </a>
+                        </CardTitle>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                            {l.county} · {l.city}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                            {getDeliveryModeLabel(l.delivery_mode)}
+                          </span>
+                        </div>
+                      </div>
 
                       <div className="flex items-end justify-between gap-3">
                         <div>
@@ -639,6 +760,17 @@ export default function ListingsPage() {
                           <div className="mt-1 font-semibold text-slate-900">{timeLeft}</div>
                         </div>
                       </div>
+
+                      {l.buy_now_price ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                          <div className="text-xs uppercase tracking-wide text-emerald-700">
+                            Villámár
+                          </div>
+                          <div className="mt-1 font-semibold text-emerald-900">
+                            {formatHuf(l.buy_now_price)}
+                          </div>
+                        </div>
+                      ) : null}
 
                       {l.description && (
                         <p className="line-clamp-2 leading-6 text-slate-600">{l.description}</p>
