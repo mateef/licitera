@@ -58,6 +58,7 @@ export default function CreateListingPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
+  const [aiImageLoading, setAiImageLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiReason, setAiReason] = useState("");
 
@@ -211,6 +212,83 @@ export default function CreateListingPage() {
     toast.success("AI kategóriaajánlás alkalmazva.");
   } finally {
     setAiLoading(false);
+  }
+}
+async function fillFromImageWithAI() {
+  if (aiImageLoading) return;
+
+  if (!files || files.length === 0) {
+    toast.error("Előbb válassz ki legalább egy képet.");
+    return;
+  }
+
+  setAiImageLoading(true);
+
+  try {
+    const { data: s } = await supabase.auth.getSession();
+    const uid = s.session?.user?.id;
+
+    if (!uid) {
+      toast.error("Előbb jelentkezz be.");
+      return;
+    }
+
+    const firstFile = files[0];
+    const safeName = safeFileName(firstFile.name);
+    const tempPath = `ai-temp/${uid}_${Date.now()}_${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("listing-images")
+      .upload(tempPath, firstFile, { upsert: false });
+
+    if (uploadError) {
+      toast.error(`AI előkészítés feltöltési hiba: ${uploadError.message}`);
+      return;
+    }
+
+    const { data: pub } = supabase.storage
+      .from("listing-images")
+      .getPublicUrl(tempPath);
+
+    const imageUrl = pub.publicUrl;
+
+    const res = await fetch("/api/ai/image-listing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ imageUrl }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Nem sikerült AI képelemzést kérni.");
+      return;
+    }
+
+    const result = data?.result;
+
+    if (!result) {
+      toast.error("Az AI nem adott használható választ.");
+      return;
+    }
+
+    if (result.title && !title.trim()) {
+      setTitle(result.title);
+    }
+
+    if (result.description && !description.trim()) {
+      setDescription(result.description);
+    }
+
+    toast.success("AI képalapú kitöltés elkészült.");
+
+    // opcionális következő lépés:
+    // ha már van title/description, kérjünk automatikusan kategóriaajánlást is
+    // ezt most még nem futtatjuk automatikusan, nehogy túl sok AI hívás legyen
+  } finally {
+    setAiImageLoading(false);
   }
 }
   async function createListing() {
@@ -451,18 +529,33 @@ export default function CreateListingPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Képek</Label>
-                  <Input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={(e) => setFiles(e.target.files)}
-                    className="h-12 rounded-xl"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Tipp: 3–6 kép ideális, jó fényben, több szögből.
-                  </p>
-                </div>
+  <Label>Képek</Label>
+  <Input
+    type="file"
+    multiple
+    accept="image/*"
+    onChange={(e) => setFiles(e.target.files)}
+    className="h-12 rounded-xl"
+  />
+
+  <p className="text-xs text-muted-foreground">
+    Tipp: 3–6 kép ideális, jó fényben, több szögből.
+  </p>
+
+  <Button
+    type="button"
+    variant="outline"
+    className="rounded-xl"
+    onClick={fillFromImageWithAI}
+    disabled={aiImageLoading || !files || files.length === 0}
+  >
+    {aiImageLoading ? "AI elemzés folyamatban..." : "✨ AI kitöltés képből"}
+  </Button>
+
+  <p className="text-xs text-muted-foreground">
+    Az AI megpróbál címet és leírást javasolni az első feltöltött kép alapján.
+  </p>
+</div>
 
                 <div className="space-y-2">
                   <Label>Átvételi mód</Label>

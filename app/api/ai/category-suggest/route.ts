@@ -183,10 +183,17 @@ export async function POST(req: Request) {
         reason: parsed.reason ?? "",
       },
     });
-  } catch {
-    return NextResponse.json(
-      { error: "Váratlan szerverhiba történt." },
-      { status: 500 }
-    );
-  }
+  } catch (error: any) {
+  console.error("AI category suggest route error:", error);
+
+  return NextResponse.json(
+    {
+      error:
+        error?.message ||
+        error?.toString() ||
+        "Váratlan szerverhiba történt.",
+    },
+    { status: 500 }
+  );
+}
 }
