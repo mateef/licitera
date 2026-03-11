@@ -151,29 +151,29 @@ export function SiteHeader() {
 
       <Separator />
 
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4">
+      <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-3 px-4 py-2">
         <button
           type="button"
           onClick={() => {
             router.push("/listings");
             router.refresh();
           }}
-          className="text-2xl font-bold tracking-tight"
+          className="shrink-0 text-2xl font-bold tracking-tight"
         >
           <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 bg-clip-text text-transparent">
             Licitera
           </span>
         </button>
 
-        <div className="hidden md:block text-xs text-muted-foreground leading-4">
+        <div className="hidden text-xs leading-4 text-muted-foreground md:block">
           Aukciók
           <br />
           licitre
         </div>
 
-        <div className="ml-2 flex flex-1 items-center gap-2">
+        <div className="ml-2 flex min-w-0 flex-1 items-center gap-2">
           <form
-            className="flex flex-1 items-center gap-2"
+            className="flex min-w-0 flex-1 items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               goSearch();
@@ -181,11 +181,11 @@ export function SiteHeader() {
           >
             <Input
               placeholder="Keress aukciót..."
-              className="h-11 rounded-full"
+              className="h-11 min-w-0 rounded-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <Button type="submit" className="h-11 rounded-full px-6">
+            <Button type="submit" className="h-11 shrink-0 rounded-full px-4 sm:px-6">
               Keresés
             </Button>
           </form>
@@ -193,7 +193,7 @@ export function SiteHeader() {
           {mounted ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-11 rounded-full">
+                <Button variant="outline" className="hidden h-11 rounded-full md:inline-flex">
                   Kategóriák
                 </Button>
               </DropdownMenuTrigger>
@@ -204,10 +204,18 @@ export function SiteHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button variant="outline" className="h-11 rounded-full" disabled>
+            <Button variant="outline" className="hidden h-11 rounded-full md:inline-flex" disabled>
               Kategóriák
             </Button>
           )}
+
+          <Button
+            className="h-11 shrink-0 rounded-full px-4 sm:px-6"
+            onClick={() => router.push("/create-listing")}
+          >
+            <span className="hidden sm:inline">Új aukció</span>
+            <span className="sm:hidden">Eladás</span>
+          </Button>
         </div>
       </div>
     </header>

@@ -362,10 +362,10 @@ export default function HomePage() {
         </section>
 
         {showLogin && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-6 sm:pt-10">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setShowLogin(false)} />
 
-            <div className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-[#0b1021]/90 p-6 text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+            <div className="relative z-10 mb-6 w-full max-w-md rounded-[2rem] border border-white/15 bg-[#0b1021]/90 p-6 text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
               <button
                 type="button"
                 onClick={() => setShowLogin(false)}
