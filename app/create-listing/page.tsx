@@ -58,6 +58,8 @@ export default function CreateListingPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiReason, setAiReason] = useState("");
 
   const availableCities = useMemo(() => {
     if (!county) return [];
@@ -164,7 +166,53 @@ export default function CreateListingPage() {
     if (buyNow !== null && (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)) return false;
     return true;
   }, [title, county, city, deliveryMode, sp, inc, hours, buyNow]);
+  async function suggestCategoryWithAI() {
+  if (aiLoading) return;
 
+  if (!title.trim() && !description.trim()) {
+    toast.error("Adj meg legalább címet vagy leírást az AI ajánláshoz.");
+    return;
+  }
+
+  setAiLoading(true);
+  setAiReason("");
+
+  try {
+    const res = await fetch("/api/ai/category-suggest", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title,
+        description,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Nem sikerült AI kategóriaajánlást kérni.");
+      return;
+    }
+
+    const suggestion = data?.suggestion;
+
+    if (!suggestion?.l1Id || !suggestion?.l2Id || !suggestion?.l3Id) {
+      toast.error("Az AI nem adott használható kategóriaajánlást.");
+      return;
+    }
+
+    setCatL1(suggestion.l1Id);
+    setCatL2(suggestion.l2Id);
+    setCatL3(suggestion.l3Id);
+    setAiReason(suggestion.reason || "");
+
+    toast.success("AI kategóriaajánlás alkalmazva.");
+  } finally {
+    setAiLoading(false);
+  }
+}
   async function createListing() {
     if (submitting) return;
 
@@ -470,6 +518,17 @@ export default function CreateListingPage() {
 
               <div className="space-y-2">
                 <Label>Kategória</Label>
+                <div className="flex flex-wrap gap-2">
+  <Button
+    type="button"
+    variant="outline"
+    className="rounded-xl"
+    onClick={suggestCategoryWithAI}
+    disabled={aiLoading}
+  >
+    {aiLoading ? "AI elemzés..." : "✨ AI kategóriaajánlás"}
+  </Button>
+</div>
 
                 <div className="grid gap-2 sm:grid-cols-3">
                   <select
@@ -528,6 +587,11 @@ export default function CreateListingPage() {
                 ) : (
                   <div className="text-xs text-muted-foreground">Nem kötelező, de ajánlott.</div>
                 )}
+                {aiReason ? (
+  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+    <span className="font-medium text-slate-900">AI javaslat indoka:</span> {aiReason}
+  </div>
+) : null}
               </div>
 
               <Button
