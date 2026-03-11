@@ -235,7 +235,7 @@ async function fillFromImageWithAI() {
 
     const firstFile = files[0];
     const safeName = safeFileName(firstFile.name);
-    const tempPath = `ai-temp/${uid}_${Date.now()}_${safeName}`;
+    const tempPath = `${uid}/ai-temp_${Date.now()}_${safeName}`;
 
     const { error: uploadError } = await supabase.storage
       .from("listing-images")
