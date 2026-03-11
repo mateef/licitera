@@ -27,6 +27,7 @@ export function SiteHeader() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   if (pathname === "/") {
     return null;
@@ -45,11 +46,16 @@ export function SiteHeader() {
 
   async function loadSessionAndProfile() {
     const { data } = await supabase.auth.getSession();
-    const userId = data.session?.user?.id ?? null;
+    const user = data.session?.user ?? null;
+    const userId = user?.id ?? null;
+    const userEmail = user?.email ?? "";
+
     setSessionUserId(userId);
+    setIsAdmin(userEmail === "fmate2000@gmail.com");
 
     if (!userId) {
       setDisplayName("");
+      setIsAdmin(false);
       return;
     }
 
@@ -108,31 +114,45 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-4">
           {sessionUserId ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Profil ▼
-                </button>
-              </DropdownMenuTrigger>
+            <>
+              {isAdmin ? (
+                <a className="hover:underline" href="/admin">
+                  Admin felület
+                </a>
+              ) : null}
 
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => router.push("/profile")}>
-                  Profil
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/my-listings")}>
-                  Saját aukciók
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/watchlist")}>
-                  Figyelőlista
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSignOut}>
-                  Kijelentkezés
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Profil ▼
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end">
+                  {isAdmin ? (
+                    <DropdownMenuItem onClick={() => router.push("/admin")}>
+                      Admin felület
+                    </DropdownMenuItem>
+                  ) : null}
+
+                  <DropdownMenuItem onClick={() => router.push("/profile")}>
+                    Profil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/my-listings")}>
+                    Saját aukciók
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/watchlist")}>
+                    Figyelőlista
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    Kijelentkezés
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           ) : (
             <>
               <a className="hover:underline" href="/my-listings">
@@ -208,6 +228,16 @@ export function SiteHeader() {
               Kategóriák
             </Button>
           )}
+
+          {isAdmin ? (
+            <Button
+              variant="outline"
+              className="hidden h-11 rounded-full lg:inline-flex"
+              onClick={() => router.push("/admin")}
+            >
+              Admin felület
+            </Button>
+          ) : null}
 
           <Button
             className="h-11 shrink-0 rounded-full px-4 sm:px-6"
