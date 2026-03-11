@@ -4,8 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { formatHuf } from "@/lib/format";
+import settlements from "@/data/hungary-settlements.json";
+import { HUNGARIAN_COUNTIES, DELIVERY_MODES } from "@/lib/hungary";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,15 +27,26 @@ type Category = {
   sort_order: number | null;
 };
 
+type SettlementItem = {
+  city: string;
+  county: string;
+};
+
+const settlementItems = settlements as SettlementItem[];
+
 export default function CreateListingPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startingPrice, setStartingPrice] = useState("1000");
   const [durationHours, setDurationHours] = useState("24");
   const [minIncrement, setMinIncrement] = useState("100");
+  const [buyNowPrice, setBuyNowPrice] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
 
-  // 3 szint kategória
+  const [county, setCounty] = useState("");
+  const [city, setCity] = useState("");
+  const [deliveryMode, setDeliveryMode] = useState("");
+
   const [catsL1, setCatsL1] = useState<Category[]>([]);
   const [catsL2, setCatsL2] = useState<Category[]>([]);
   const [catsL3, setCatsL3] = useState<Category[]>([]);
@@ -39,6 +58,14 @@ export default function CreateListingPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
+
+  const availableCities = useMemo(() => {
+    if (!county) return [];
+    return settlementItems
+      .filter((item) => item.county === county)
+      .map((item) => item.city)
+      .sort((a, b) => a.localeCompare(b, "hu"));
+  }, [county]);
 
   function safeFileName(name: string) {
     return name
@@ -60,7 +87,8 @@ export default function CreateListingPage() {
       toast.error(`Kategóriák betöltése sikertelen: ${error.message}`);
       return;
     }
-    setCatsL1((data ?? []) as any);
+
+    setCatsL1((data ?? []) as Category[]);
   }
 
   async function loadChildren(parentId: string) {
@@ -92,6 +120,7 @@ export default function CreateListingPage() {
       const children = await loadChildren(catL1);
       setCatsL2(children);
     }
+
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catL1]);
@@ -106,35 +135,62 @@ export default function CreateListingPage() {
       const children = await loadChildren(catL2);
       setCatsL3(children);
     }
+
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catL2]);
 
+  useEffect(() => {
+    setCity("");
+  }, [county]);
+
   const sp = useMemo(() => Number(startingPrice), [startingPrice]);
   const inc = useMemo(() => Number(minIncrement), [minIncrement]);
   const hours = useMemo(() => Number(durationHours), [durationHours]);
+  const buyNow = useMemo(() => {
+    if (!buyNowPrice.trim()) return null;
+    const n = Number(buyNowPrice);
+    return Number.isFinite(n) ? n : NaN;
+  }, [buyNowPrice]);
 
   const canSubmit = useMemo(() => {
     if (!title.trim()) return false;
+    if (!county) return false;
+    if (!city) return false;
+    if (!deliveryMode) return false;
     if (!Number.isFinite(sp) || sp <= 0) return false;
     if (!Number.isFinite(inc) || inc <= 0) return false;
     if (!Number.isFinite(hours) || hours <= 0) return false;
+    if (buyNow !== null && (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)) return false;
     return true;
-  }, [title, sp, inc, hours]);
+  }, [title, county, city, deliveryMode, sp, inc, hours, buyNow]);
 
   async function createListing() {
     if (submitting) return;
 
     if (!title.trim()) return toast.error("Adj címet.");
+    if (!county) return toast.error("Válassz vármegyét.");
+    if (!city) return toast.error("Válassz települést.");
+    if (!deliveryMode) return toast.error("Válassz átvételi módot.");
     if (!Number.isFinite(sp) || sp <= 0) return toast.error("A kezdőár legyen 0-nál nagyobb.");
     if (!Number.isFinite(inc) || inc <= 0) return toast.error("A licitlépcső legyen 0-nál nagyobb.");
     if (!Number.isFinite(hours) || hours <= 0) return toast.error("Az időtartam legyen 0-nál nagyobb.");
+
+    if (buyNow !== null) {
+      if (!Number.isFinite(buyNow) || buyNow <= 0) {
+        return toast.error("A villámár legyen pozitív szám.");
+      }
+      if (buyNow <= sp) {
+        return toast.error("A villámár legyen magasabb, mint a kezdőár.");
+      }
+    }
 
     setSubmitting(true);
 
     try {
       const { data: s } = await supabase.auth.getSession();
       const uid = s.session?.user?.id;
+
       if (!uid) {
         toast.error("Előbb jelentkezz be.");
         setSubmitting(false);
@@ -155,6 +211,10 @@ export default function CreateListingPage() {
           min_increment: inc,
           ends_at: endsAt,
           is_active: true,
+          county,
+          city,
+          delivery_mode: deliveryMode,
+          buy_now_price: buyNow,
         })
         .select("id")
         .single();
@@ -167,7 +227,6 @@ export default function CreateListingPage() {
 
       const listingId = created.id as string;
 
-      // upload images
       const uploadedUrls: string[] = [];
       const uploadedPaths: string[] = [];
 
@@ -177,7 +236,10 @@ export default function CreateListingPage() {
           const safeName = safeFileName(f.name);
           const path = `${uid}/${listingId}_${Date.now()}_${safeName}`;
 
-          const { error: upErr } = await supabase.storage.from("listing-images").upload(path, f, { upsert: false });
+          const { error: upErr } = await supabase.storage
+            .from("listing-images")
+            .upload(path, f, { upsert: false });
+
           if (upErr) {
             toast.error(`Feltöltési hiba: ${upErr.message}`);
             setSubmitting(false);
@@ -204,193 +266,367 @@ export default function CreateListingPage() {
       }
 
       toast.success("Aukció létrehozva ✅");
+
       setTitle("");
       setDescription("");
       setStartingPrice("1000");
       setDurationHours("24");
       setMinIncrement("100");
+      setBuyNowPrice("");
       setFiles(null);
+
+      setCounty("");
+      setCity("");
+      setDeliveryMode("");
+
+      setCatL1("");
+      setCatL2("");
+      setCatL3("");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-12">
-      {/* FORM */}
-      <div className="lg:col-span-7 space-y-6">
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>Aukció létrehozása</CardTitle>
-            <CardDescription>Add meg az alapadatokat, tölts fel képeket, és indíthatod is.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="title">Cím</Label>
-              <Input
-                id="title"
-                placeholder="Pl.: iPhone 13, 128GB, hibátlan"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Legyen rövid és beszédes. A jó cím több licitet hoz.</p>
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(219,234,254,0.85),rgba(255,255,255,0.96),rgba(245,208,254,0.72))] p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-slate-600 backdrop-blur">
+              Eladás
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="desc">Leírás</Label>
-              <Textarea
-                id="desc"
-                placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[120px]"
-              />
-            </div>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+              Aukció létrehozása
+            </h1>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Kezdőár</Label>
-                <Input value={startingPrice} onChange={(e) => setStartingPrice(e.target.value)} inputMode="decimal" />
-              </div>
+            <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
+              Add meg a termék adatait, válassz helyszínt és átvételi módot, majd indítsd el az aukciót modern, prémium felületen.
+            </p>
+          </div>
 
-              <div className="space-y-2">
-                <Label>Licitlépcső</Label>
-                <Input value={minIncrement} onChange={(e) => setMinIncrement(e.target.value)} inputMode="decimal" />
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary" className="rounded-full px-3 py-1">
+              Gyors feladás
+            </Badge>
+            <Badge variant="secondary" className="rounded-full px-3 py-1">
+              Villámár opcionális
+            </Badge>
+            <Badge variant="secondary" className="rounded-full px-3 py-1">
+              Magyar helyadatok
+            </Badge>
+          </div>
+        </div>
+      </section>
 
-              <div className="space-y-2">
-                <Label>Időtartam (óra)</Label>
-                <Input value={durationHours} onChange={(e) => setDurationHours(e.target.value)} inputMode="numeric" />
-              </div>
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="space-y-6 lg:col-span-7">
+          <Card className="overflow-hidden rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
+            <CardHeader>
+              <CardTitle>Termék és aukció adatai</CardTitle>
+              <CardDescription>
+                Add meg az alapadatokat, tölts fel képeket, és indíthatod is.
+              </CardDescription>
+            </CardHeader>
 
+            <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label>Képek</Label>
-                <Input type="file" multiple accept="image/*" onChange={(e) => setFiles(e.target.files)} />
+                <Label htmlFor="title">Cím</Label>
+                <Input
+                  id="title"
+                  placeholder="Pl.: iPhone 13, 128GB, hibátlan"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="h-12 rounded-xl"
+                />
                 <p className="text-xs text-muted-foreground">
-                  Tipp: 3–6 kép ideális (jó fény, több szög).
+                  Legyen rövid és beszédes. A jó cím több licitet hoz.
                 </p>
               </div>
-            </div>
 
-            {/* 3 szintű kategória */}
-            <div className="space-y-2">
-              <Label>Kategória</Label>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <select
-                  className="h-10 w-full rounded-md border px-3 text-sm bg-background"
-                  value={catL1}
-                  onChange={(e) => setCatL1(e.target.value)}
-                >
-                  <option value="">Főkategória</option>
-                  {catsL1.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className="h-10 w-full rounded-md border px-3 text-sm bg-background"
-                  value={catL2}
-                  onChange={(e) => setCatL2(e.target.value)}
-                  disabled={!catL1 || catsL2.length === 0}
-                >
-                  <option value="">Alkategória</option>
-                  {catsL2.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className="h-10 w-full rounded-md border px-3 text-sm bg-background"
-                  value={catL3}
-                  onChange={(e) => setCatL3(e.target.value)}
-                  disabled={!catL2 || catsL3.length === 0}
-                >
-                  <option value="">Típus</option>
-                  {catsL3.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-2">
+                <Label htmlFor="desc">Leírás</Label>
+                <Textarea
+                  id="desc"
+                  placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="min-h-[140px] rounded-xl"
+                />
               </div>
 
-              {finalCategoryId ? (
-                <div className="text-xs text-muted-foreground">
-                  Kiválasztva:{" "}
-                  <span className="font-medium text-foreground">
-                    {catL3
-                      ? catsL3.find((x) => x.id === catL3)?.name
-                      : catL2
-                      ? catsL2.find((x) => x.id === catL2)?.name
-                      : catsL1.find((x) => x.id === catL1)?.name}
-                  </span>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Kezdőár</Label>
+                  <Input
+                    value={startingPrice}
+                    onChange={(e) => setStartingPrice(e.target.value)}
+                    inputMode="decimal"
+                    className="h-12 rounded-xl"
+                  />
                 </div>
-              ) : (
-                <div className="text-xs text-muted-foreground">Nem kötelező, de ajánlott.</div>
-              )}
-            </div>
 
-            <Button className="w-full" onClick={createListing} disabled={!canSubmit || submitting}>
-              {submitting ? "Létrehozás folyamatban…" : "Aukció indítása"}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+                <div className="space-y-2">
+                  <Label>Licitlépcső</Label>
+                  <Input
+                    value={minIncrement}
+                    onChange={(e) => setMinIncrement(e.target.value)}
+                    inputMode="decimal"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
 
-      {/* SUMMARY */}
-      <div className="lg:col-span-5 space-y-6">
-        <Card className="lg:sticky lg:top-24">
-          <CardHeader>
-            <CardTitle className="text-base">Összefoglaló</CardTitle>
-            <CardDescription>Így fog megjelenni nagyjából a licitdoboz logikája.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Kezdőár</span>
-              <span className="font-semibold">{Number.isFinite(sp) ? formatHuf(sp) : "-"}</span>
-            </div>
+                <div className="space-y-2">
+                  <Label>Időtartam (óra)</Label>
+                  <Input
+                    value={durationHours}
+                    onChange={(e) => setDurationHours(e.target.value)}
+                    inputMode="numeric"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Licitlépcső</span>
-              <span className="font-medium">{Number.isFinite(inc) ? formatHuf(inc) : "-"}</span>
-            </div>
+                <div className="space-y-2">
+                  <Label>Villámár (opcionális)</Label>
+                  <Input
+                    value={buyNowPrice}
+                    onChange={(e) => setBuyNowPrice(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="Pl. 35000"
+                    className="h-12 rounded-xl"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ha megadod, a vevő azonnal lezárhatja vele az aukciót.
+                  </p>
+                </div>
+              </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Következő minimum</span>
-              <span className="font-semibold">
-                {Number.isFinite(sp) && Number.isFinite(inc) ? formatHuf(sp + inc) : "-"}
-              </span>
-            </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Képek</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => setFiles(e.target.files)}
+                    className="h-12 rounded-xl"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Tipp: 3–6 kép ideális, jó fényben, több szögből.
+                  </p>
+                </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Időtartam</span>
-              <span className="font-medium">{Number.isFinite(hours) ? `${hours} óra` : "-"}</span>
-            </div>
+                <div className="space-y-2">
+                  <Label>Átvételi mód</Label>
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                    value={deliveryMode}
+                    onChange={(e) => setDeliveryMode(e.target.value)}
+                  >
+                    <option value="">Válassz átvételi módot</option>
+                    {DELIVERY_MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-            <div className="rounded-md border p-3 text-xs text-muted-foreground">
-              <div className="mb-2 font-medium text-foreground">Tippek</div>
-              <ul className="list-disc pl-4 space-y-1">
-                <li>Legyen jó a fő kép — ez adja az első benyomást.</li>
-                <li>Írj pontos átvételt/szállítást a leírásba.</li>
-                <li>Ne legyen túl kicsi a licitlépcső (spam licitek).</li>
-              </ul>
-            </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Vármegye</Label>
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                    value={county}
+                    onChange={(e) => setCounty(e.target.value)}
+                  >
+                    <option value="">Válassz vármegyét</option>
+                    {HUNGARIAN_COUNTIES.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Gyors</Badge>
-              <Badge variant="secondary">Átlátható</Badge>
-              <Badge variant="secondary">Csak licit</Badge>
-            </div>
+                <div className="space-y-2">
+                  <Label>Település</Label>
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    disabled={!county}
+                  >
+                    <option value="">{county ? "Válassz települést" : "Előbb válassz vármegyét"}</option>
+                    {availableCities.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-            <Button variant="outline" className="w-full" asChild>
-              <a href="/listings">Vissza a listára</a>
-            </Button>
-          </CardContent>
-        </Card>
+              <div className="space-y-2">
+                <Label>Kategória</Label>
+
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                    value={catL1}
+                    onChange={(e) => setCatL1(e.target.value)}
+                  >
+                    <option value="">Főkategória</option>
+                    {catsL1.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    value={catL2}
+                    onChange={(e) => setCatL2(e.target.value)}
+                    disabled={!catL1 || catsL2.length === 0}
+                  >
+                    <option value="">Alkategória</option>
+                    {catsL2.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    value={catL3}
+                    onChange={(e) => setCatL3(e.target.value)}
+                    disabled={!catL2 || catsL3.length === 0}
+                  >
+                    <option value="">Típus</option>
+                    {catsL3.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {finalCategoryId ? (
+                  <div className="text-xs text-muted-foreground">
+                    Kiválasztva:{" "}
+                    <span className="font-medium text-foreground">
+                      {catL3
+                        ? catsL3.find((x) => x.id === catL3)?.name
+                        : catL2
+                        ? catsL2.find((x) => x.id === catL2)?.name
+                        : catsL1.find((x) => x.id === catL1)?.name}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">Nem kötelező, de ajánlott.</div>
+                )}
+              </div>
+
+              <Button
+                className="h-12 w-full rounded-xl"
+                onClick={createListing}
+                disabled={!canSubmit || submitting}
+              >
+                {submitting ? "Létrehozás folyamatban…" : "Aukció indítása"}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6 lg:col-span-5">
+          <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)] lg:sticky lg:top-24">
+            <CardHeader>
+              <CardTitle className="text-base">Összefoglaló</CardTitle>
+              <CardDescription>
+                Így fog megjelenni nagyjából a licitdoboz logikája.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4 text-sm">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Kezdőár</div>
+                <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
+                  {Number.isFinite(sp) ? formatHuf(sp) : "-"}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Licitlépcső</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {Number.isFinite(inc) ? formatHuf(inc) : "-"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Időtartam</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {Number.isFinite(hours) ? `${hours} óra` : "-"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Következő minimum</div>
+                <div className="mt-1 font-semibold text-slate-900">
+                  {Number.isFinite(sp) && Number.isFinite(inc) ? formatHuf(sp + inc) : "-"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Villámár</div>
+                <div className="mt-1 font-semibold text-slate-900">
+                  {buyNow !== null && Number.isFinite(buyNow) ? formatHuf(buyNow) : "Nincs megadva"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Helyszín</div>
+                <div className="mt-1 font-semibold text-slate-900">
+                  {county && city ? `${county} · ${city}` : "Nincs megadva"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Átvételi mód</div>
+                <div className="mt-1 font-semibold text-slate-900">
+                  {deliveryMode
+                    ? DELIVERY_MODES.find((x) => x.value === deliveryMode)?.label ?? deliveryMode
+                    : "Nincs megadva"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border p-4 text-xs text-muted-foreground">
+                <div className="mb-2 font-medium text-foreground">Tippek</div>
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>Legyen jó a fő kép — ez adja az első benyomást.</li>
+                  <li>Írj pontos átvételi információkat.</li>
+                  <li>Ne legyen túl kicsi a licitlépcső.</li>
+                  <li>A villámár segíthet gyorsabban lezárni az aukciót.</li>
+                </ul>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">Gyors</Badge>
+                <Badge variant="secondary">Átlátható</Badge>
+                <Badge variant="secondary">Modern</Badge>
+                <Badge variant="secondary">Villámár</Badge>
+              </div>
+
+              <Button variant="outline" className="h-11 w-full rounded-xl" asChild>
+                <a href="/listings">Vissza a listára</a>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
