@@ -218,6 +218,38 @@ export default function ListingDetailPage() {
     setBidError(bidValidation.error);
   }, [bidValidation.error]);
 
+async function buyNow() {
+  if (!sessionUserId) {
+    toast.error("Be kell jelentkezni.");
+    return;
+  }
+
+  if (!listing?.buy_now_price) {
+    toast.error("Ehhez nincs villámár.");
+    return;
+  }
+
+  const confirm = window.confirm(
+    `Biztosan megveszed villámáron?\n\nÁr: ${formatHuf(listing.buy_now_price)}`
+  );
+
+  if (!confirm) return;
+
+  const { error } = await supabase.rpc("buy_now_listing", {
+    p_listing_id: listing.id,
+  });
+
+  if (error) {
+    toast.error(error.message);
+    return;
+  }
+
+  toast.success("Megvetted villámáron! 🎉");
+
+  await loadListing();
+  await loadBids();
+}
+
   async function placeBid() {
     setBidTouched(true);
 
@@ -473,12 +505,18 @@ export default function ListingDetailPage() {
                 </Badge>
               )}
               {status.ended ? (
-                <Badge variant="destructive" className="rounded-full px-3 py-1">
-                  Lezárva
-                </Badge>
-              ) : (
-                <Badge className="rounded-full px-3 py-1">Aktív aukció</Badge>
-              )}
+  listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price ? (
+    <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
+      ⚡ Villámáron elkelt
+    </Badge>
+  ) : (
+    <Badge variant="destructive" className="rounded-full px-3 py-1">
+      Lezárva
+    </Badge>
+  )
+) : (
+  <Badge className="rounded-full px-3 py-1">Aktív aukció</Badge>
+)}
               {isOwner && (
                 <Badge variant="outline" className="rounded-full px-3 py-1">
                   Saját aukció
@@ -487,8 +525,17 @@ export default function ListingDetailPage() {
               {listing.buy_now_price ? (
                 <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
                   Villámár: {formatHuf(listing.buy_now_price)}
+                  <Button
+  variant="default"
+  className="h-12 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700"
+  onClick={buyNow}
+  disabled={status.ended || isOwner}
+>
+  ⚡ Megveszem villámáron ({formatHuf(listing.buy_now_price)})
+</Button>
                 </Badge>
               ) : null}
+              
               <Badge
                 variant={reachedRenewalLimit ? "destructive" : "outline"}
                 className="rounded-full px-3 py-1"
@@ -870,7 +917,11 @@ export default function ListingDetailPage() {
 
                 {status.ended ? (
                   <div className="rounded-2xl border border-slate-200 p-4 text-sm">
-                    <div className="font-semibold text-slate-900">Lezárva</div>
+                    <div className="font-semibold text-slate-900">
+  {listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price
+    ? "⚡ Villámáron elkelt"
+    : "Lezárva"}
+</div>
                     <div className="mt-1 text-slate-600">
                       Végső ár: {formatHuf(listing.final_price ?? listing.current_price)}
                     </div>

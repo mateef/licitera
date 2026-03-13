@@ -56,11 +56,10 @@ export default function CreateListingPage() {
   const [catL3, setCatL3] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+  const [aiImageLoading, setAiImageLoading] = useState(false);
+  const [aiReason, setAiReason] = useState("");
 
   const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
-  const [aiImageLoading, setAiImageLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiReason, setAiReason] = useState("");
 
   const availableCities = useMemo(() => {
     if (!county) return [];
@@ -167,130 +166,95 @@ export default function CreateListingPage() {
     if (buyNow !== null && (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)) return false;
     return true;
   }, [title, county, city, deliveryMode, sp, inc, hours, buyNow]);
-  async function suggestCategoryWithAI() {
-  if (aiLoading) return;
 
-  if (!title.trim() && !description.trim()) {
-    toast.error("Adj meg legalább címet vagy leírást az AI ajánláshoz.");
-    return;
+  async function fillFromImageWithAI() {
+    if (aiImageLoading) return;
+
+    if (!files || files.length === 0) {
+      toast.error("Előbb válassz ki legalább egy képet.");
+      return;
+    }
+
+    setAiImageLoading(true);
+    setAiReason("");
+
+    try {
+      const { data: s } = await supabase.auth.getSession();
+      const uid = s.session?.user?.id;
+
+      if (!uid) {
+        toast.error("Előbb jelentkezz be.");
+        return;
+      }
+
+      const firstFile = files[0];
+      const safeName = safeFileName(firstFile.name);
+      const tempPath = `${uid}/ai-temp_${Date.now()}_${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("listing-images")
+        .upload(tempPath, firstFile, { upsert: false });
+
+      if (uploadError) {
+        toast.error(`AI előkészítés feltöltési hiba: ${uploadError.message}`);
+        return;
+      }
+
+      const { data: pub } = supabase.storage.from("listing-images").getPublicUrl(tempPath);
+      const imageUrl = pub.publicUrl;
+
+      const res = await fetch("/api/ai/image-listing", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült AI képelemzést kérni.");
+        return;
+      }
+
+      const result = data?.result;
+
+      if (!result) {
+        toast.error("Az AI nem adott használható választ.");
+        return;
+      }
+
+      if (result.title) {
+        setTitle(result.title);
+      }
+
+      if (result.description) {
+        setDescription(result.description);
+      }
+
+      if (result.l1Id) {
+        setCatL1(result.l1Id);
+      }
+
+      if (result.l2Id) {
+        setCatL2(result.l2Id);
+      }
+
+      if (result.l3Id) {
+        setCatL3(result.l3Id);
+      }
+
+      if (result.reason) {
+        setAiReason(result.reason);
+      }
+
+      toast.success("AI kitöltés elkészült.");
+    } finally {
+      setAiImageLoading(false);
+    }
   }
 
-  setAiLoading(true);
-  setAiReason("");
-
-  try {
-    const res = await fetch("/api/ai/category-suggest", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title,
-        description,
-      }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.error || "Nem sikerült AI kategóriaajánlást kérni.");
-      return;
-    }
-
-    const suggestion = data?.suggestion;
-
-    if (!suggestion?.l1Id || !suggestion?.l2Id || !suggestion?.l3Id) {
-      toast.error("Az AI nem adott használható kategóriaajánlást.");
-      return;
-    }
-
-    setCatL1(suggestion.l1Id);
-    setCatL2(suggestion.l2Id);
-    setCatL3(suggestion.l3Id);
-    setAiReason(suggestion.reason || "");
-
-    toast.success("AI kategóriaajánlás alkalmazva.");
-  } finally {
-    setAiLoading(false);
-  }
-}
-async function fillFromImageWithAI() {
-  if (aiImageLoading) return;
-
-  if (!files || files.length === 0) {
-    toast.error("Előbb válassz ki legalább egy képet.");
-    return;
-  }
-
-  setAiImageLoading(true);
-
-  try {
-    const { data: s } = await supabase.auth.getSession();
-    const uid = s.session?.user?.id;
-
-    if (!uid) {
-      toast.error("Előbb jelentkezz be.");
-      return;
-    }
-
-    const firstFile = files[0];
-    const safeName = safeFileName(firstFile.name);
-    const tempPath = `${uid}/ai-temp_${Date.now()}_${safeName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("listing-images")
-      .upload(tempPath, firstFile, { upsert: false });
-
-    if (uploadError) {
-      toast.error(`AI előkészítés feltöltési hiba: ${uploadError.message}`);
-      return;
-    }
-
-    const { data: pub } = supabase.storage
-      .from("listing-images")
-      .getPublicUrl(tempPath);
-
-    const imageUrl = pub.publicUrl;
-
-    const res = await fetch("/api/ai/image-listing", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ imageUrl }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.error || "Nem sikerült AI képelemzést kérni.");
-      return;
-    }
-
-    const result = data?.result;
-
-    if (!result) {
-      toast.error("Az AI nem adott használható választ.");
-      return;
-    }
-
-    if (result.title && !title.trim()) {
-      setTitle(result.title);
-    }
-
-    if (result.description && !description.trim()) {
-      setDescription(result.description);
-    }
-
-    toast.success("AI képalapú kitöltés elkészült.");
-
-    // opcionális következő lépés:
-    // ha már van title/description, kérjünk automatikusan kategóriaajánlást is
-    // ezt most még nem futtatjuk automatikusan, nehogy túl sok AI hívás legyen
-  } finally {
-    setAiImageLoading(false);
-  }
-}
   async function createListing() {
     if (submitting) return;
 
@@ -408,6 +372,7 @@ async function fillFromImageWithAI() {
       setCatL1("");
       setCatL2("");
       setCatL3("");
+      setAiReason("");
     } finally {
       setSubmitting(false);
     }
@@ -439,7 +404,7 @@ async function fillFromImageWithAI() {
               Villámár opcionális
             </Badge>
             <Badge variant="secondary" className="rounded-full px-3 py-1">
-              Magyar helyadatok
+              AI képalapú kitöltés
             </Badge>
           </div>
         </div>
@@ -451,87 +416,197 @@ async function fillFromImageWithAI() {
             <CardHeader>
               <CardTitle>Termék és aukció adatai</CardTitle>
               <CardDescription>
-                Add meg az alapadatokat, tölts fel képeket, és indíthatod is.
+                Tölts fel képet, kérj AI segítséget, majd ellenőrizd az adatokat.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="space-y-2">
+                  <Label>Képek</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => setFiles(e.target.files)}
+                    className="h-12 rounded-xl"
+                  />
+
+                  <p className="text-xs text-muted-foreground">
+                    Tipp: 3–6 kép ideális, jó fényben, több szögből.
+                  </p>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={fillFromImageWithAI}
+                    disabled={aiImageLoading || !files || files.length === 0}
+                  >
+                    {aiImageLoading ? "AI elemzés folyamatban..." : "✨ AI kitöltés képből"}
+                  </Button>
+
+                  <p className="text-xs text-muted-foreground">
+                    Az AI az első feltöltött képből megpróbál címet, leírást és kategóriát javasolni.
+                  </p>
+
+                  {aiReason ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                      <span className="font-medium text-slate-900">AI javaslat indoka:</span> {aiReason}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="title">Cím</Label>
+                <Input
+                  id="title"
+                  placeholder="Pl.: iPhone 13, 128GB, hibátlan"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="h-12 rounded-xl"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Legyen rövid és beszédes. A jó cím több licitet hoz.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="desc">Leírás</Label>
+                <Textarea
+                  id="desc"
+                  placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="min-h-[140px] rounded-xl"
+                />
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
-  <div className="space-y-2 sm:col-span-2">
-    <Label>Képek</Label>
-    <p className="text-xs text-muted-foreground">
-  Tölts fel képet először, és az AI segíthet kitölteni a címet és a leírást.
-</p>
-    <Input
-      type="file"
-      multiple
-      accept="image/*"
-      onChange={(e) => setFiles(e.target.files)}
-      className="h-12 rounded-xl"
-    />
+                <div className="space-y-2">
+                  <Label>Kezdőár</Label>
+                  <Input
+                    value={startingPrice}
+                    onChange={(e) => setStartingPrice(e.target.value)}
+                    inputMode="decimal"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
 
-    <p className="text-xs text-muted-foreground">
-      Tipp: 3–6 kép ideális, jó fényben, több szögből.
-    </p>
+                <div className="space-y-2">
+                  <Label>Licitlépcső</Label>
+                  <Input
+                    value={minIncrement}
+                    onChange={(e) => setMinIncrement(e.target.value)}
+                    inputMode="decimal"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
 
-    <div className="flex flex-wrap gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        className="rounded-xl"
-        onClick={fillFromImageWithAI}
-        disabled={aiImageLoading || !files || files.length === 0}
-      >
-        {aiImageLoading ? "AI elemzés folyamatban..." : "✨ AI kitöltés képből"}
-      </Button>
-    </div>
+                <div className="space-y-2">
+                  <Label>Időtartam (óra)</Label>
+                  <Input
+                    value={durationHours}
+                    onChange={(e) => setDurationHours(e.target.value)}
+                    inputMode="numeric"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
 
-    <p className="text-xs text-muted-foreground">
-      Az AI megpróbál címet és leírást javasolni az első feltöltött kép alapján.
-    </p>
-  </div>
-</div>
+                <div className="space-y-2">
+                  <Label>Villámár (opcionális)</Label>
+                  <Input
+                    value={buyNowPrice}
+                    onChange={(e) => setBuyNowPrice(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="Pl. 35000"
+                    className="h-12 rounded-xl"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ha megadod, a vevő azonnal lezárhatja vele az aukciót.
+                  </p>
+                </div>
+              </div>
 
-<div className="space-y-2">
-  <Label htmlFor="title">Cím</Label>
-  <Input
-    id="title"
-    placeholder="Pl.: iPhone 13, 128GB, hibátlan"
-    value={title}
-    onChange={(e) => setTitle(e.target.value)}
-    className="h-12 rounded-xl"
-  />
-  <p className="text-xs text-muted-foreground">
-    Legyen rövid és beszédes. A jó cím több licitet hoz.
-  </p>
-</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Átvételi mód</Label>
+                  <select
+                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                    value={deliveryMode}
+                    onChange={(e) => setDeliveryMode(e.target.value)}
+                  >
+                    <option value="">Válassz átvételi módot</option>
+                    {DELIVERY_MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-<div className="space-y-2">
-  <Label htmlFor="desc">Leírás</Label>
-  <Textarea
-    id="desc"
-    placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
-    value={description}
-    onChange={(e) => setDescription(e.target.value)}
-    className="min-h-[140px] rounded-xl"
-  />
-</div>
+                <div className="space-y-2">
+                  <Label>Kategória</Label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <select
+                      className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                      value={catL1}
+                      onChange={(e) => setCatL1(e.target.value)}
+                    >
+                      <option value="">Főkategória</option>
+                      {catsL1.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
 
-<div className="space-y-2">
-  <Label>Átvételi mód</Label>
-  <select
-    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
-    value={deliveryMode}
-    onChange={(e) => setDeliveryMode(e.target.value)}
-  >
-    <option value="">Válassz átvételi módot</option>
-    {DELIVERY_MODES.map((mode) => (
-      <option key={mode.value} value={mode.value}>
-        {mode.label}
-      </option>
-    ))}
-  </select>
-</div>
+                    <select
+                      className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      value={catL2}
+                      onChange={(e) => setCatL2(e.target.value)}
+                      disabled={!catL1 || catsL2.length === 0}
+                    >
+                      <option value="">Alkategória</option>
+                      {catsL2.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      value={catL3}
+                      onChange={(e) => setCatL3(e.target.value)}
+                      disabled={!catL2 || catsL3.length === 0}
+                    >
+                      <option value="">Típus</option>
+                      {catsL3.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {finalCategoryId ? (
+                    <div className="text-xs text-muted-foreground">
+                      Kiválasztva:{" "}
+                      <span className="font-medium text-foreground">
+                        {catL3
+                          ? catsL3.find((x) => x.id === catL3)?.name
+                          : catL2
+                          ? catsL2.find((x) => x.id === catL2)?.name
+                          : catsL1.find((x) => x.id === catL1)?.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Nem kötelező, de ajánlott.</div>
+                  )}
+                </div>
+              </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -568,84 +643,6 @@ async function fillFromImageWithAI() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Kategória</Label>
-                <div className="flex flex-wrap gap-2">
-  <Button
-    type="button"
-    variant="outline"
-    className="rounded-xl"
-    onClick={suggestCategoryWithAI}
-    disabled={aiLoading}
-  >
-    {aiLoading ? "AI elemzés..." : "✨ AI kategóriaajánlás"}
-  </Button>
-</div>
-
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <select
-                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
-                    value={catL1}
-                    onChange={(e) => setCatL1(e.target.value)}
-                  >
-                    <option value="">Főkategória</option>
-                    {catsL1.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                    value={catL2}
-                    onChange={(e) => setCatL2(e.target.value)}
-                    disabled={!catL1 || catsL2.length === 0}
-                  >
-                    <option value="">Alkategória</option>
-                    {catsL2.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                    value={catL3}
-                    onChange={(e) => setCatL3(e.target.value)}
-                    disabled={!catL2 || catsL3.length === 0}
-                  >
-                    <option value="">Típus</option>
-                    {catsL3.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {finalCategoryId ? (
-                  <div className="text-xs text-muted-foreground">
-                    Kiválasztva:{" "}
-                    <span className="font-medium text-foreground">
-                      {catL3
-                        ? catsL3.find((x) => x.id === catL3)?.name
-                        : catL2
-                        ? catsL2.find((x) => x.id === catL2)?.name
-                        : catsL1.find((x) => x.id === catL1)?.name}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">Nem kötelező, de ajánlott.</div>
-                )}
-                {aiReason ? (
-  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-    <span className="font-medium text-slate-900">AI javaslat indoka:</span> {aiReason}
-  </div>
-) : null}
-              </div>
-
               <Button
                 className="h-12 w-full rounded-xl"
                 onClick={createListing}
@@ -662,7 +659,7 @@ async function fillFromImageWithAI() {
             <CardHeader>
               <CardTitle className="text-base">Összefoglaló</CardTitle>
               <CardDescription>
-                Így fog megjelenni nagyjából a licitdoboz logikája.
+                Így fog megjelenni az oldalon.
               </CardDescription>
             </CardHeader>
 

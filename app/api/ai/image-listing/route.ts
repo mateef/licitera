@@ -6,6 +6,11 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -18,29 +23,49 @@ export async function POST(req: Request) {
       );
     }
 
+    // kategóriák lekérése
+    const { data: categories } = await supabase
+      .from("categories")
+      .select("id,name,parent_id");
+
+    if (!categories) {
+      return NextResponse.json(
+        { error: "Nem sikerült kategóriákat betölteni." },
+        { status: 500 }
+      );
+    }
+
+    const categoryList = categories
+      .map((c) => `${c.id} | ${c.name} | parent:${c.parent_id ?? "null"}`)
+      .join("\n");
+
     const response = await openai.responses.create({
       model: "gpt-5.4",
       instructions:
         "Te egy magyar piactér hirdetéssegítő asszisztens vagy. " +
-        "A feltöltött termékkép alapján írj rövid, valószínű címet és rövid marketplace leírást magyarul. " +
-        "Ne találj ki biztosra olyan dolgot, amit nem lehet látni. " +
-        "Csak JSON-t adj vissza ebben a formátumban: " +
-        '{"title":"...","description":"...","product_type":"..."}',
+        "A feltöltött kép alapján írj rövid címet és leírást magyarul. " +
+        "Ezután válassz a megadott kategórialistából egy megfelelő kategóriát. " +
+        "Csak a listában szereplő kategóriákat használhatod. " +
+        "JSON formátumban válaszolj így: " +
+        '{"title":"...","description":"...","l1Id":"...","l2Id":"...","l3Id":"...","reason":"..."}',
+
       input: [
         {
           role: "user",
           content: [
-  {
-    type: "input_text",
-    text:
-      "Elemezd a képet, és adj egy marketplace-kompatibilis címet és rövid leírást magyarul.",
-  },
-  {
-    type: "input_image",
-    image_url: imageUrl,
-    detail: "auto",
-  },
-],
+            {
+              type: "input_text",
+              text:
+                "Elemezd a képet és javasolj címet, leírást és kategóriát.\n\n" +
+                "Kategóriák:\n" +
+                categoryList,
+            },
+            {
+              type: "input_image",
+              image_url: imageUrl,
+              detail: "auto",
+            },
+          ],
         },
       ],
     });
@@ -57,13 +82,16 @@ export async function POST(req: Request) {
     let parsed: {
       title?: string;
       description?: string;
-      product_type?: string;
+      l1Id?: string;
+      l2Id?: string;
+      l3Id?: string;
+      reason?: string;
     };
 
     try {
       parsed = JSON.parse(text);
     } catch (error) {
-      console.error("AI image listing parse error:", text);
+      console.error("AI parse error:", text);
       return NextResponse.json(
         { error: "Az AI válasza nem volt feldolgozható." },
         { status: 500 }
@@ -75,7 +103,10 @@ export async function POST(req: Request) {
       result: {
         title: parsed.title?.trim() ?? "",
         description: parsed.description?.trim() ?? "",
-        productType: parsed.product_type?.trim() ?? "",
+        l1Id: parsed.l1Id ?? "",
+        l2Id: parsed.l2Id ?? "",
+        l3Id: parsed.l3Id ?? "",
+        reason: parsed.reason ?? "",
       },
     });
   } catch (error: any) {
