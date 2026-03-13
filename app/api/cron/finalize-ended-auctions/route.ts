@@ -212,6 +212,10 @@ export async function POST(req: NextRequest) {
                 <p>A következő aukciód lezárult, és lett nyertese:</p>
                 <p><strong>${listing.title}</strong></p>
                 <p><strong>Nyertes licit:</strong> ${formattedPrice}</p>
+                <p>
+                    A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
+                    a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
+                </p>
                 <p><strong>Nyertes neve:</strong> ${winner.full_name || "Nincs megadva"}</p>
                 <p><strong>Nyertes email címe:</strong> ${winner.email}</p>
                 <p><strong>Nyertes telefonszáma:</strong> ${winner.phone ?? "Nincs megadva"}</p>
@@ -235,6 +239,10 @@ export async function POST(req: NextRequest) {
                 <p>Sikeresen megnyerted az alábbi aukciót:</p>
                 <p><strong>${listing.title}</strong></p>
                 <p><strong>Nyertes licit:</strong> ${formattedPrice}</p>
+                <p>
+                    A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
+                    a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
+                </p>
                 <p><strong>Eladó neve:</strong> ${seller.full_name || "Nincs megadva"}</p>
                 <p><strong>Eladó email címe:</strong> ${seller.email}</p>
                 <p><strong>Eladó telefonszáma:</strong> ${seller.phone ?? "Nincs megadva"}</p>

@@ -288,6 +288,25 @@ export default function CreateListingPage() {
         setSubmitting(false);
         return;
       }
+      const { data: profile, error: profileError } = await supabase
+  .from("profiles")
+  .select("phone")
+  .eq("id", uid)
+  .maybeSingle();
+
+if (profileError) {
+  toast.error("Nem sikerült ellenőrizni a profiladataidat.");
+  setSubmitting(false);
+  return;
+}
+
+const phone = (profile as { phone?: string | null } | null)?.phone?.trim();
+
+if (!phone) {
+  toast.error("Aukció indításához előbb add meg a telefonszámod a profilodban.");
+  setSubmitting(false);
+  return;
+}
 
       const endsAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
@@ -630,7 +649,7 @@ return;
                   </select>
                 </div>
               </div>
-
+              
               <Button
                 className="h-12 w-full rounded-xl"
                 onClick={createListing}

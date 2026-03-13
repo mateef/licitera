@@ -10,6 +10,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -53,7 +60,7 @@ export async function POST(req: Request) {
 
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, phone")
       .in("id", userIds);
 
     if (profilesError || !profiles) {
@@ -63,8 +70,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const seller = profiles.find((p) => p.id === listing.user_id);
-    const buyer = profiles.find((p) => p.id === listing.winner_user_id);
+    const profileRows = (profiles ?? []) as ProfileRow[];
+
+    const seller = profileRows.find((p) => p.id === listing.user_id);
+    const buyer = profileRows.find((p) => p.id === listing.winner_user_id);
 
     if (!seller?.email || !buyer?.email) {
       return NextResponse.json(
@@ -101,7 +110,13 @@ export async function POST(req: Request) {
           <p>A következő hirdetésedet megvették villámáron:</p>
           <p><strong>${listing.title}</strong></p>
           <p><strong>Végső ár:</strong> ${formattedPrice}</p>
-          <p>A vevő hamarosan fel tudja venni veled a kapcsolatot a további egyeztetéshez.</p>
+          <p>
+            A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
+            a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
+          </p>
+          <p><strong>Vevő neve:</strong> ${buyer.full_name || "Nincs megadva"}</p>
+          <p><strong>Vevő email címe:</strong> ${buyer.email}</p>
+          <p><strong>Vevő telefonszáma:</strong> ${buyer.phone ?? "Nincs megadva"}</p>
           <p>
             Hirdetés megnyitása:
             <a href="${listingUrl}">${listingUrl}</a>
@@ -122,8 +137,15 @@ export async function POST(req: Request) {
           <p>Sikeresen megvásároltad villámáron az alábbi terméket:</p>
           <p><strong>${listing.title}</strong></p>
           <p><strong>Végső ár:</strong> ${formattedPrice}</p>
-          <p>Az eladó hamarosan fel tudja venni veled a kapcsolatot, vagy te is megnyithatod a hirdetést:</p>
           <p>
+            A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
+            a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
+          </p>
+          <p><strong>Eladó neve:</strong> ${seller.full_name || "Nincs megadva"}</p>
+          <p><strong>Eladó email címe:</strong> ${seller.email}</p>
+          <p><strong>Eladó telefonszáma:</strong> ${seller.phone ?? "Nincs megadva"}</p>
+          <p>
+            Hirdetés megnyitása:
             <a href="${listingUrl}">${listingUrl}</a>
           </p>
           <p>Üdv,<br/>Licitera</p>
