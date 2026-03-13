@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
 
 type Category = {
   id: string;
@@ -42,6 +43,7 @@ export default function CreateListingPage() {
   const [minIncrement, setMinIncrement] = useState("100");
   const [buyNowPrice, setBuyNowPrice] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
+  const router = useRouter();
 
   const [county, setCounty] = useState("");
   const [city, setCity] = useState("");
@@ -356,23 +358,9 @@ export default function CreateListingPage() {
       }
 
       toast.success("Aukció létrehozva ✅");
-
-      setTitle("");
-      setDescription("");
-      setStartingPrice("1000");
-      setDurationHours("24");
-      setMinIncrement("100");
-      setBuyNowPrice("");
-      setFiles(null);
-
-      setCounty("");
-      setCity("");
-      setDeliveryMode("");
-
-      setCatL1("");
-      setCatL2("");
-      setCatL3("");
-      setAiReason("");
+router.push(`/listing/${listingId}`);
+router.refresh();
+return;
     } finally {
       setSubmitting(false);
     }

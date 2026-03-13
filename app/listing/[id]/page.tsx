@@ -218,37 +218,31 @@ export default function ListingDetailPage() {
     setBidError(bidValidation.error);
   }, [bidValidation.error]);
 
-async function buyNow() {
-  if (!sessionUserId) {
-    toast.error("Be kell jelentkezni.");
-    return;
+  async function buyNow() {
+    if (!sessionUserId) {
+      toast.error("Be kell jelentkezni.");
+      return;
+    }
+
+    if (!listing?.buy_now_price) {
+      toast.error("Ehhez nincs villámár.");
+      return;
+    }
+
+    const { error } = await supabase.rpc("buy_now_listing", {
+      p_listing_id: listing.id,
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Villámáron megvásároltad a terméket ⚡");
+
+    await loadListing();
+    await loadBids();
   }
-
-  if (!listing?.buy_now_price) {
-    toast.error("Ehhez nincs villámár.");
-    return;
-  }
-
-  const confirm = window.confirm(
-    `Biztosan megveszed villámáron?\n\nÁr: ${formatHuf(listing.buy_now_price)}`
-  );
-
-  if (!confirm) return;
-
-  const { error } = await supabase.rpc("buy_now_listing", {
-    p_listing_id: listing.id,
-  });
-
-  if (error) {
-    toast.error(error.message);
-    return;
-  }
-
-  toast.success("Megvetted villámáron! 🎉");
-
-  await loadListing();
-  await loadBids();
-}
 
   async function placeBid() {
     setBidTouched(true);
@@ -504,38 +498,33 @@ async function buyNow() {
                   {listing.categories.name}
                 </Badge>
               )}
+
               {status.ended ? (
-  listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price ? (
-    <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
-      ⚡ Villámáron elkelt
-    </Badge>
-  ) : (
-    <Badge variant="destructive" className="rounded-full px-3 py-1">
-      Lezárva
-    </Badge>
-  )
-) : (
-  <Badge className="rounded-full px-3 py-1">Aktív aukció</Badge>
-)}
+                listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price ? (
+                  <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
+                    ⚡ Villámáron elkelt
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive" className="rounded-full px-3 py-1">
+                    Lezárva
+                  </Badge>
+                )
+              ) : (
+                <Badge className="rounded-full px-3 py-1">Aktív aukció</Badge>
+              )}
+
               {isOwner && (
                 <Badge variant="outline" className="rounded-full px-3 py-1">
                   Saját aukció
                 </Badge>
               )}
+
               {listing.buy_now_price ? (
                 <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
                   Villámár: {formatHuf(listing.buy_now_price)}
-                  <Button
-  variant="default"
-  className="h-12 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700"
-  onClick={buyNow}
-  disabled={status.ended || isOwner}
->
-  ⚡ Megveszem villámáron ({formatHuf(listing.buy_now_price)})
-</Button>
                 </Badge>
               ) : null}
-              
+
               <Badge
                 variant={reachedRenewalLimit ? "destructive" : "outline"}
                 className="rounded-full px-3 py-1"
@@ -679,9 +668,7 @@ async function buyNow() {
 
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <div className="text-xs uppercase tracking-wide text-slate-500">Megújítások</div>
-                    <div className="mt-1 font-semibold text-slate-900">
-                      {renewalCount} / 2
-                    </div>
+                    <div className="mt-1 font-semibold text-slate-900">{renewalCount} / 2</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {reachedRenewalLimit
                         ? "A hirdetés elérte a maximális megújítási limitet."
@@ -900,9 +887,7 @@ async function buyNow() {
 
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <div className="text-xs uppercase tracking-wide text-slate-500">Megújítások</div>
-                    <div className="mt-1 font-semibold text-slate-900">
-                      {renewalCount} / 2
-                    </div>
+                    <div className="mt-1 font-semibold text-slate-900">{renewalCount} / 2</div>
                   </div>
 
                   {listing.buy_now_price ? (
@@ -918,10 +903,10 @@ async function buyNow() {
                 {status.ended ? (
                   <div className="rounded-2xl border border-slate-200 p-4 text-sm">
                     <div className="font-semibold text-slate-900">
-  {listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price
-    ? "⚡ Villámáron elkelt"
-    : "Lezárva"}
-</div>
+                      {listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price
+                        ? "⚡ Villámáron elkelt"
+                        : "Lezárva"}
+                    </div>
                     <div className="mt-1 text-slate-600">
                       Végső ár: {formatHuf(listing.final_price ?? listing.current_price)}
                     </div>
@@ -1015,6 +1000,35 @@ async function buyNow() {
                     <Button className="h-12 w-full rounded-xl" onClick={placeBid} disabled={!bidValidation.ok}>
                       Licitálok
                     </Button>
+
+                    {listing.buy_now_price && !status.ended && !isOwner && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button className="h-12 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700">
+                            ⚡ Megveszem villámáron ({formatHuf(listing.buy_now_price)})
+                          </Button>
+                        </AlertDialogTrigger>
+
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Villámáras vásárlás</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Biztosan szeretnéd megvásárolni ezt a terméket?
+                              <br />
+                              <br />
+                              <strong>Végösszeg: {formatHuf(listing.buy_now_price)}</strong>
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Nem</AlertDialogCancel>
+                            <AlertDialogAction onClick={buyNow}>
+                              Igen, megveszem
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
 
                     {!sessionUserId ? (
                       <p className="text-xs text-muted-foreground">

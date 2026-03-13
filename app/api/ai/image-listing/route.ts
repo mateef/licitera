@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       model: "gpt-5.4",
       instructions:
         "Te egy magyar piactér hirdetéssegítő asszisztens vagy. " +
-        "A feltöltött kép alapján írj rövid címet és leírást magyarul. " +
+        "A feltöltött kép alapján írj rövid címet és leírást magyarul, de úgy, mintha azt egy felhasználó írná, tehát olyan, hogy a kép alapján minek tűnik ne szerepeljen benne. " +
         "Ezután válassz a megadott kategórialistából egy megfelelő kategóriát. " +
         "Csak a listában szereplő kategóriákat használhatod. " +
         "JSON formátumban válaszolj így: " +
