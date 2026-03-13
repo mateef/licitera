@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { BarChart3, RefreshCcw, Shield, ImageIcon, Gavel, CircleCheck, CircleX } from "lucide-react";
+import { Shield, RefreshCcw, ImageIcon, Gavel, CircleCheck, CircleX, Repeat2, BarChart3 } from "lucide-react";
 
 type Stats = {
   createdToday: number;
@@ -13,6 +12,7 @@ type Stats = {
   expiredToday: number;
   successfulExpiredToday: number;
   unsuccessfulExpiredToday: number;
+  renewedToday: number;
 };
 
 type ListingWithBids = {
@@ -30,6 +30,7 @@ export default function AdminStatsPage() {
     expiredToday: 0,
     successfulExpiredToday: 0,
     unsuccessfulExpiredToday: 0,
+    renewedToday: 0,
   });
 
   async function loadStats() {
@@ -71,6 +72,18 @@ export default function AdminStatsPage() {
       return;
     }
 
+    const { count: renewedTodayCount, error: renewedError } = await supabase
+      .from("listings")
+      .select("id", { count: "exact", head: true })
+      .not("last_renewed_at", "is", null)
+      .gte("last_renewed_at", startIso)
+      .lte("last_renewed_at", nowIso);
+
+    if (renewedError) {
+      setLoading(false);
+      return;
+    }
+
     const createdRows = (createdTodayRows ?? []) as ListingWithBids[];
     const expiredRows = (expiredTodayRows ?? []) as ListingWithBids[];
 
@@ -92,6 +105,7 @@ export default function AdminStatsPage() {
       expiredToday: expiredRows.length,
       successfulExpiredToday,
       unsuccessfulExpiredToday,
+      renewedToday: renewedTodayCount ?? 0,
     });
 
     setLoading(false);
@@ -132,7 +146,8 @@ export default function AdminStatsPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-              Itt látod, mi történt ma a Liciterán: új aukciók, képek, lejárt aukciók és sikeres zárások.
+              Itt látod, mi történt ma a Liciterán: új aukciók, képek, lejárt aukciók,
+              sikeres zárások és megújítások.
             </p>
           </div>
 
@@ -143,7 +158,7 @@ export default function AdminStatsPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <Card className="rounded-[1.5rem]">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
@@ -193,6 +208,16 @@ export default function AdminStatsPage() {
             <div className="mt-2 text-3xl font-black">{loading ? "…" : stats.unsuccessfulExpiredToday}</div>
           </CardContent>
         </Card>
+
+        <Card className="rounded-[1.5rem]">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+              <Repeat2 className="h-4 w-4" />
+              Mai megújítások
+            </div>
+            <div className="mt-2 text-3xl font-black">{loading ? "…" : stats.renewedToday}</div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -207,7 +232,9 @@ export default function AdminStatsPage() {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl bg-slate-50 p-4">
               <div className="text-xs uppercase tracking-wide text-slate-500">Sikerességi arány</div>
-              <div className="mt-2 text-3xl font-black text-slate-900">{loading ? "…" : `${successRate}%`}</div>
+              <div className="mt-2 text-3xl font-black text-slate-900">
+                {loading ? "…" : `${successRate}%`}
+              </div>
               <div className="mt-1 text-sm text-slate-600">
                 A mai lejárt aukciók közül ennyi zárult legalább egy licittel.
               </div>
@@ -226,15 +253,23 @@ export default function AdminStatsPage() {
                 Segít látni, mennyire részletesek az újonnan feladott hirdetések.
               </div>
             </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Mai megújítások jelentése</div>
+              <div className="mt-2 text-3xl font-black text-slate-900">
+                {loading ? "…" : stats.renewedToday}
+              </div>
+              <div className="mt-1 text-sm text-slate-600">
+                Ennyi licit nélkül lejárt hirdetést újítottak meg ma a felhasználók.
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="rounded-[1.75rem]">
           <CardHeader>
             <CardTitle>Következő admin lépések</CardTitle>
-            <CardDescription>
-              Ezeket érdemes utána bekötni.
-            </CardDescription>
+            <CardDescription>Ezeket érdemes utána bekötni.</CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-2 text-sm text-muted-foreground">
