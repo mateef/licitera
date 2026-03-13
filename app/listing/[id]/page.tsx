@@ -87,6 +87,8 @@ export default function ListingDetailPage() {
   const [watched, setWatched] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [buyNowLoading, setBuyNowLoading] = useState(false);
+  const [buyNowSuccess, setBuyNowSuccess] = useState(false);
 
   const [bidError, setBidError] = useState<string>("");
   const [bidTouched, setBidTouched] = useState(false);
@@ -96,6 +98,7 @@ export default function ListingDetailPage() {
 
   const [reportReason, setReportReason] = useState("");
   const [reportDetails, setReportDetails] = useState("");
+  const [winnerDisplayName, setWinnerDisplayName] = useState("");
 
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
@@ -115,6 +118,19 @@ export default function ListingDetailPage() {
     const { data } = await supabase.auth.getSession();
     setSessionUserId(data.session?.user?.id ?? null);
   }
+
+  function toPublicWinnerName(fullName: string | null | undefined) {
+  if (!fullName) return "Ismeretlen felhasználó";
+
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "Ismeretlen felhasználó";
+  if (parts.length === 1) return parts[0];
+
+  const firstName = parts[parts.length - 1];
+  const lastNameInitial = parts[0].charAt(0).toUpperCase();
+
+  return `${firstName} ${lastNameInitial}.`;
+}
 
   async function loadRelated(categoryName: string | null) {
     if (!categoryName) {
@@ -166,11 +182,36 @@ export default function ListingDetailPage() {
 
     setListing(data as any);
 
-    const first = (data as any)?.image_urls?.[0] ?? null;
-    setSelectedImage(first);
+const first = (data as any)?.image_urls?.[0] ?? null;
+setSelectedImage(first);
 
-    await loadRelated((data as any)?.categories?.name ?? null);
+await loadWinnerDisplayName((data as any)?.winner_user_id ?? null);
+await loadRelated((data as any)?.categories?.name ?? null);
   }
+
+  async function loadWinnerDisplayName(winnerUserId: string | null) {
+  if (!winnerUserId) {
+    setWinnerDisplayName("");
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("full_name, public_display_name")
+    .eq("id", winnerUserId)
+    .maybeSingle();
+
+  if (error || !data) {
+    setWinnerDisplayName("Ismeretlen felhasználó");
+    return;
+  }
+
+  const publicName =
+    (data as any)?.public_display_name ||
+    toPublicWinnerName((data as any)?.full_name);
+
+  setWinnerDisplayName(publicName || "Ismeretlen felhasználó");
+}
 
   async function loadBids() {
     const { data, error } = await supabase
@@ -219,16 +260,19 @@ export default function ListingDetailPage() {
   }, [bidValidation.error]);
 
   async function buyNow() {
-    if (!sessionUserId) {
-      toast.error("Be kell jelentkezni.");
-      return;
-    }
+  if (!sessionUserId) {
+    toast.error("Be kell jelentkezni.");
+    return;
+  }
 
-    if (!listing?.buy_now_price) {
-      toast.error("Ehhez nincs villámár.");
-      return;
-    }
+  if (!listing?.buy_now_price) {
+    toast.error("Ehhez nincs villámár.");
+    return;
+  }
 
+  setBuyNowLoading(true);
+
+  try {
     const { error } = await supabase.rpc("buy_now_listing", {
       p_listing_id: listing.id,
     });
@@ -238,11 +282,29 @@ export default function ListingDetailPage() {
       return;
     }
 
-    toast.success("Villámáron megvásároltad a terméket ⚡");
+    const notifyRes = await fetch("/api/notifications/buy-now", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ listingId: listing.id }),
+    });
 
+    const notifyData = await notifyRes.json().catch(() => null);
+
+    if (!notifyRes.ok) {
+      toast.error(notifyData?.error || "A vásárlás sikerült, de az email küldés nem.");
+    } else {
+      toast.success("Villámáron megvásároltad a terméket ⚡");
+    }
+
+    setBuyNowSuccess(true);
     await loadListing();
     await loadBids();
+  } finally {
+    setBuyNowLoading(false);
   }
+}
 
   async function placeBid() {
     setBidTouched(true);
@@ -257,17 +319,29 @@ export default function ListingDetailPage() {
     const amount = n;
 
     const { data: s } = await supabase.auth.getSession();
-    const uid = s.session?.user?.id;
-    if (!uid) return toast.error("Licitáláshoz be kell jelentkezni.");
+const uid = s.session?.user?.id;
+if (!uid) return toast.error("Licitáláshoz be kell jelentkezni.");
 
-    const { error } = await supabase.rpc("place_bid", {
-      p_listing_id: listingId,
-      p_amount: amount,
-    });
+const { error } = await supabase.rpc("place_bid", {
+  p_listing_id: listingId,
+  p_amount: amount,
+});
 
-    if (error) return toast.error(error.message);
+if (error) return toast.error(error.message);
 
-    toast.success("Licit sikeres ✅");
+await fetch("/api/notifications/new-bid", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    listingId,
+    bidderUserId: uid,
+    amount,
+  }),
+});
+
+toast.success("Licit sikeres ✅");
     setBidAmount("");
     setBidTouched(false);
     await loadListing();
@@ -498,7 +572,14 @@ export default function ListingDetailPage() {
                   {listing.categories.name}
                 </Badge>
               )}
-
+                {buyNowSuccess && (
+  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+    <div className="font-semibold text-emerald-900">Sikeres villámáras vásárlás ⚡</div>
+    <div className="mt-1 text-emerald-800">
+      A vásárlás rögzítve lett. A további részleteket emailben is elküldtük az eladónak és a vevőnek.
+    </div>
+  </div>
+)}
               {status.ended ? (
                 listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price ? (
                   <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
@@ -911,10 +992,10 @@ export default function ListingDetailPage() {
                       Végső ár: {formatHuf(listing.final_price ?? listing.current_price)}
                     </div>
                     {listing.winner_user_id ? (
-                      <div className="mt-1 text-slate-600">
-                        Nyertes: {listing.winner_user_id.slice(0, 8)}…
-                      </div>
-                    ) : null}
+  <div className="mt-1 text-slate-600">
+    Nyertes: {winnerDisplayName || "Betöltés..."}
+  </div>
+) : null}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1022,9 +1103,9 @@ export default function ListingDetailPage() {
 
                           <AlertDialogFooter>
                             <AlertDialogCancel>Nem</AlertDialogCancel>
-                            <AlertDialogAction onClick={buyNow}>
-                              Igen, megveszem
-                            </AlertDialogAction>
+                            <AlertDialogAction onClick={buyNow} disabled={buyNowLoading}>
+  {buyNowLoading ? "Folyamatban..." : "Igen, megveszem"}
+</AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>

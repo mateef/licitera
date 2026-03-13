@@ -31,6 +31,17 @@ type Listing = {
   image_paths: string[] | null;
   bid_count?: number;
   renewal_count: number;
+  final_price: number | null;
+  buy_now_price: number | null;
+  winner_user_id: string | null;
+  is_active: boolean;
+  closed_at: string | null;
+};
+
+type WinnerProfileRow = {
+  id: string;
+  full_name: string | null;
+  public_display_name?: string | null;
 };
 
 export default function MyListingsPage() {
@@ -38,6 +49,7 @@ export default function MyListingsPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteReasons, setDeleteReasons] = useState<Record<string, string>>({});
+  const [winnerNames, setWinnerNames] = useState<Record<string, string>>({});
 
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
@@ -62,6 +74,19 @@ export default function MyListingsPage() {
     return `${hours} óra ${minutes} perc`;
   }
 
+  function toPublicWinnerName(fullName: string | null | undefined) {
+    if (!fullName) return "Ismeretlen felhasználó";
+
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "Ismeretlen felhasználó";
+    if (parts.length === 1) return parts[0];
+
+    const firstName = parts[parts.length - 1];
+    const lastNameInitial = parts[0].charAt(0).toUpperCase();
+
+    return `${firstName} ${lastNameInitial}.`;
+  }
+
   function canDeleteDirectly(listing: Listing) {
     const createdAt = new Date(listing.created_at).getTime();
     const oneHourLater = createdAt + 60 * 60 * 1000;
@@ -78,6 +103,37 @@ export default function MyListingsPage() {
     const canStillRenew = (listing.renewal_count ?? 0) < 2;
 
     return isExpired && hasNoBids && canStillRenew;
+  }
+
+  async function loadWinnerNames(rows: Listing[]) {
+    const winnerIds = Array.from(
+      new Set(rows.map((x) => x.winner_user_id).filter(Boolean) as string[])
+    );
+
+    if (winnerIds.length === 0) {
+      setWinnerNames({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,full_name,public_display_name")
+      .in("id", winnerIds);
+
+    if (error || !data) {
+      setWinnerNames({});
+      return;
+    }
+
+    const map: Record<string, string> = {};
+    (data as WinnerProfileRow[]).forEach((profile) => {
+      map[profile.id] =
+        profile.public_display_name ||
+        toPublicWinnerName(profile.full_name) ||
+        "Ismeretlen felhasználó";
+    });
+
+    setWinnerNames(map);
   }
 
   async function init() {
@@ -99,7 +155,9 @@ export default function MyListingsPage() {
   async function loadMyListings(userId: string) {
     const { data, error } = await supabase
       .from("listings")
-      .select("id,title,current_price,ends_at,created_at,image_urls,image_paths,renewal_count,bids(count)")
+      .select(
+  "id,title,current_price,ends_at,created_at,image_urls,image_paths,renewal_count,final_price,buy_now_price,winner_user_id,is_active,closed_at,bids(count)"
+)
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -115,9 +173,13 @@ export default function MyListingsPage() {
         ...item,
         bid_count: item.bids?.[0]?.count ?? 0,
         renewal_count: item.renewal_count ?? 0,
+        final_price: item.final_price ?? null,
+        buy_now_price: item.buy_now_price ?? null,
+        winner_user_id: item.winner_user_id ?? null,
       })) ?? [];
 
     setListings(formatted);
+    await loadWinnerNames(formatted);
     setLoading(false);
   }
 
@@ -206,9 +268,12 @@ export default function MyListingsPage() {
   }, []);
 
   const activeCount = useMemo(() => {
-    const t = now;
-    return listings.filter((l) => new Date(l.ends_at).getTime() > t).length;
-  }, [listings, now]);
+  const t = now;
+  return listings.filter((l) => {
+    const endsInFuture = new Date(l.ends_at).getTime() > t;
+    return l.is_active && !l.closed_at && endsInFuture;
+  }).length;
+}, [listings, now]);
 
   const endedCount = useMemo(() => listings.length - activeCount, [listings.length, activeCount]);
 
@@ -289,10 +354,21 @@ export default function MyListingsPage() {
           ) : (
             listings.map((l) => {
               const ends = new Date(l.ends_at).getTime();
-              const isActive = ends > now;
+const isActive = l.is_active && !l.closed_at && ends > now;
               const cover = l.image_urls?.[0] ?? null;
               const directDeleteAllowed = canDeleteDirectly(l);
               const renewAllowed = canRenewListing(l);
+
+              const winnerName = l.winner_user_id
+                ? winnerNames[l.winner_user_id] || "Betöltés..."
+                : "";
+
+              const wonByBuyNow =
+                !!l.final_price &&
+                !!l.buy_now_price &&
+                l.final_price === l.buy_now_price;
+
+              const winningAmount = l.final_price ?? l.current_price;
 
               return (
                 <Card key={l.id} className="overflow-hidden transition hover:shadow-md">
@@ -311,6 +387,11 @@ export default function MyListingsPage() {
 
                     <div className="absolute left-3 top-3 flex gap-2">
                       {isActive ? <Badge>Aktív</Badge> : <Badge variant="destructive">Lejárt</Badge>}
+                      {!isActive && wonByBuyNow ? (
+                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                          ⚡ Villámáron elkelt
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
 
@@ -328,9 +409,32 @@ export default function MyListingsPage() {
 
                   <CardContent className="space-y-3 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Jelenlegi licit</span>
-                      <span className="font-semibold">{formatHuf(l.current_price)}</span>
-                    </div>
+  <span className="text-muted-foreground">
+    {isActive ? "Jelenlegi licit" : "Záró ár"}
+  </span>
+  <span className="font-semibold">
+    {formatHuf(isActive ? l.current_price : (l.final_price ?? l.current_price))}
+  </span>
+</div>
+
+                    {!isActive && l.winner_user_id ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <div className="text-xs uppercase tracking-wide text-emerald-700">
+                          {wonByBuyNow ? "Villámáras vásárlás" : "Győztes licit"}
+                        </div>
+                        <div className="mt-1 font-semibold text-emerald-900">
+                          {winnerName}
+                        </div>
+                        <div className="mt-1 text-sm text-emerald-800">
+                          {wonByBuyNow ? "Villámáron megvette" : "Ennyivel nyert"}:{" "}
+                          <span className="font-semibold">{formatHuf(winningAmount)}</span>
+                        </div>
+                      </div>
+                    ) : !isActive && (l.bid_count ?? 0) === 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                        Az aukció licit nélkül járt le.
+                      </div>
+                    ) : null}
 
                     <div className="text-xs text-muted-foreground">
                       {(l.bid_count ?? 0) === 0 ? "Még nincs licit." : `${l.bid_count} licit érkezett.`}

@@ -13,9 +13,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 type ProfileRow = {
   full_name: string | null;
+};
+
+type CategoryRow = {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  sort_order: number | null;
 };
 
 export function SiteHeader() {
@@ -28,6 +36,7 @@ export function SiteHeader() {
   const [displayName, setDisplayName] = useState("");
   const [mounted, setMounted] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mainCategories, setMainCategories] = useState<CategoryRow[]>([]);
 
   if (pathname === "/") {
     return null;
@@ -44,6 +53,22 @@ export function SiteHeader() {
     return parts[parts.length - 1] || "";
   }
 
+  async function loadMainCategories() {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id,name,parent_id,sort_order")
+      .is("parent_id", null)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (error) {
+      setMainCategories([]);
+      return;
+    }
+
+    setMainCategories((data ?? []) as CategoryRow[]);
+  }
+
   async function loadSessionAndProfile() {
     const { data } = await supabase.auth.getSession();
     const user = data.session?.user ?? null;
@@ -55,7 +80,7 @@ export function SiteHeader() {
 
     if (!userId) {
       setDisplayName("");
-      setIsAdmin(false);
+      if (!userEmail) setIsAdmin(false);
       return;
     }
 
@@ -72,6 +97,7 @@ export function SiteHeader() {
   useEffect(() => {
     setMounted(true);
     loadSessionAndProfile();
+    loadMainCategories();
 
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
       loadSessionAndProfile();
@@ -84,8 +110,11 @@ export function SiteHeader() {
     const q = search.trim();
     const params = new URLSearchParams(searchParams.toString());
 
-    if (q) params.set("q", q);
-    else params.delete("q");
+    if (q) {
+      params.set("q", q);
+    } else {
+      params.delete("q");
+    }
 
     router.push(`/listings?${params.toString()}`);
   }
@@ -217,10 +246,20 @@ export function SiteHeader() {
                   Kategóriák
                 </Button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => router.push("/listings")}>
-                  Összes
+                  Összes kategória
                 </DropdownMenuItem>
+
+                {mainCategories.map((category) => (
+                  <DropdownMenuItem
+                    key={category.id}
+                    onClick={() => router.push(`/listings?category=${category.id}`)}
+                  >
+                    {category.name}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -238,6 +277,8 @@ export function SiteHeader() {
               Admin felület
             </Button>
           ) : null}
+
+          <NotificationsBell />
 
           <Button
             className="h-11 shrink-0 rounded-full px-4 sm:px-6"
