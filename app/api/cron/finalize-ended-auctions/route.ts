@@ -35,6 +35,7 @@ type ProfileRow = {
   id: string;
   full_name: string | null;
   email: string | null;
+  phone: string | null;
 };
 
 function formatHufAmount(amount: number) {
@@ -43,6 +44,15 @@ function formatHufAmount(amount: number) {
 
 function getSiteUrl() {
   return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+}
+
+function getErrorMessage(error: unknown) {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === "string") return msg;
+  }
+
+  return "Ismeretlen hiba történt.";
 }
 
 export async function POST(req: NextRequest) {
@@ -58,7 +68,8 @@ export async function POST(req: NextRequest) {
 
     const { data: listings, error: listingsError } = await supabase
       .from("listings")
-      .select(`
+      .select(
+        `
         id,
         title,
         user_id,
@@ -70,14 +81,15 @@ export async function POST(req: NextRequest) {
         closed_at,
         winner_user_id,
         final_price
-      `)
+      `
+      )
       .eq("is_active", true)
       .is("closed_at", null)
       .lte("ends_at", nowIso);
 
     if (listingsError) {
       return NextResponse.json(
-        { error: listingsError.message },
+        { error: getErrorMessage(listingsError) },
         { status: 500 }
       );
     }
@@ -97,7 +109,11 @@ export async function POST(req: NextRequest) {
         .order("created_at", { ascending: true });
 
       if (bidsError) {
-        console.error("Bids load error for listing:", listing.id, bidsError.message);
+        console.error(
+          "Bids load error for listing:",
+          listing.id,
+          getErrorMessage(bidsError)
+        );
         continue;
       }
 
@@ -107,7 +123,7 @@ export async function POST(req: NextRequest) {
       if (topBid?.user_id) {
         const finalPrice = topBid.amount;
 
-        const { error: updateError } = await supabase
+        const { data: updatedRows, error: updateError } = await supabase
           .from("listings")
           .update({
             is_active: false,
@@ -116,10 +132,21 @@ export async function POST(req: NextRequest) {
             final_price: finalPrice,
             current_price: finalPrice,
           })
-          .eq("id", listing.id);
+          .eq("id", listing.id)
+          .eq("is_active", true)
+          .is("closed_at", null)
+          .select();
 
         if (updateError) {
-          console.error("Listing update error:", listing.id, updateError.message);
+          console.error(
+            "Listing update error:",
+            listing.id,
+            getErrorMessage(updateError)
+          );
+          continue;
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
           continue;
         }
 
@@ -128,10 +155,19 @@ export async function POST(req: NextRequest) {
 
         const userIds = [listing.user_id, topBid.user_id].filter(Boolean) as string[];
 
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profilesError } = await supabase
           .from("profiles")
-          .select("id,full_name,email")
+          .select("id,full_name,email,phone")
           .in("id", userIds);
+
+        if (profilesError) {
+          console.error(
+            "Profiles load error:",
+            listing.id,
+            getErrorMessage(profilesError)
+          );
+          continue;
+        }
 
         const profileRows = (profiles ?? []) as ProfileRow[];
 
@@ -178,6 +214,7 @@ export async function POST(req: NextRequest) {
                 <p><strong>Nyertes licit:</strong> ${formattedPrice}</p>
                 <p><strong>Nyertes neve:</strong> ${winner.full_name || "Nincs megadva"}</p>
                 <p><strong>Nyertes email címe:</strong> ${winner.email}</p>
+                <p><strong>Nyertes telefonszáma:</strong> ${winner.phone ?? "Nincs megadva"}</p>
                 <p>
                   Aukció megnyitása:
                   <a href="${listingUrl}">${listingUrl}</a>
@@ -200,6 +237,7 @@ export async function POST(req: NextRequest) {
                 <p><strong>Nyertes licit:</strong> ${formattedPrice}</p>
                 <p><strong>Eladó neve:</strong> ${seller.full_name || "Nincs megadva"}</p>
                 <p><strong>Eladó email címe:</strong> ${seller.email}</p>
+                <p><strong>Eladó telefonszáma:</strong> ${seller.phone ?? "Nincs megadva"}</p>
                 <p>
                   Aukció megnyitása:
                   <a href="${listingUrl}">${listingUrl}</a>
@@ -210,7 +248,7 @@ export async function POST(req: NextRequest) {
           });
         }
       } else {
-        const { error: updateError } = await supabase
+        const { data: updatedRows, error: updateError } = await supabase
           .from("listings")
           .update({
             is_active: false,
@@ -218,10 +256,21 @@ export async function POST(req: NextRequest) {
             winner_user_id: null,
             final_price: null,
           })
-          .eq("id", listing.id);
+          .eq("id", listing.id)
+          .eq("is_active", true)
+          .is("closed_at", null)
+          .select();
 
         if (updateError) {
-          console.error("No-bid listing update error:", listing.id, updateError.message);
+          console.error(
+            "No-bid listing update error:",
+            listing.id,
+            getErrorMessage(updateError)
+          );
+          continue;
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
           continue;
         }
 
@@ -246,12 +295,12 @@ export async function POST(req: NextRequest) {
       wonCount,
       noBidCount,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("finalize-ended-auctions route error:", error);
 
     return NextResponse.json(
       {
-        error: error?.message || "Váratlan szerverhiba történt.",
+        error: getErrorMessage(error),
       },
       { status: 500 }
     );
