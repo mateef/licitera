@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       .verifications.create({
         to: normalizedPhone,
         channel: "sms",
+        locale: "hu"
       });
 
     return NextResponse.json({ success: true });
