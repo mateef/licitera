@@ -100,6 +100,9 @@ export default function ListingDetailPage() {
   const [reportDetails, setReportDetails] = useState("");
   const [winnerDisplayName, setWinnerDisplayName] = useState("");
 
+  const [maxBidAmount, setMaxBidAmount] = useState("");
+  const [maxBidLoading, setMaxBidLoading] = useState(false);
+
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
     setNow(Date.now());
@@ -347,6 +350,51 @@ toast.success("Licit sikeres ✅");
     await loadListing();
     await loadBids();
   }
+  async function placeMaxBid() {
+  if (!sessionUserId) {
+    toast.error("Licitáláshoz be kell jelentkezni.");
+    return;
+  }
+
+  if (isOwner) {
+    toast.error("Saját aukcióra nem licitálhatsz.");
+    return;
+  }
+
+  if (status.ended) {
+    toast.error("Az aukció lezárult.");
+    return;
+  }
+
+  const raw = maxBidAmount.trim().replace(/\s+/g, "").replace(/,/g, ".");
+  const amount = Number(raw);
+
+  if (!Number.isFinite(amount)) {
+    toast.error("Adj meg érvényes maximum licitet.");
+    return;
+  }
+
+  setMaxBidLoading(true);
+
+  try {
+    const { error } = await supabase.rpc("place_max_bid", {
+      p_listing_id: listingId,
+      p_max_amount: amount,
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Maximum licit sikeresen beállítva ✅");
+    setMaxBidAmount("");
+    await loadListing();
+    await loadBids();
+  } finally {
+    setMaxBidLoading(false);
+  }
+}
 
   async function submitReport() {
     if (!sessionUserId) {
@@ -1081,6 +1129,33 @@ toast.success("Licit sikeres ✅");
                     <Button className="h-12 w-full rounded-xl" onClick={placeBid} disabled={!bidValidation.ok}>
                       Licitálok
                     </Button>
+
+                    <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+  <div>
+    <div className="text-sm font-medium text-slate-900">Automatikus maximum licit</div>
+    <div className="text-xs text-muted-foreground mt-1">
+      Add meg a legmagasabb összeget, ameddig hajlandó vagy elmenni, a rendszer pedig automatikusan csak a szükséges minimumra licitál helyetted.
+    </div>
+  </div>
+
+  <Input
+    placeholder="Pl. 50000"
+    value={maxBidAmount}
+    onChange={(e) => setMaxBidAmount(e.target.value)}
+    inputMode="decimal"
+    className="h-12 rounded-xl"
+  />
+
+  <Button
+    type="button"
+    variant="secondary"
+    className="h-12 w-full rounded-xl"
+    onClick={placeMaxBid}
+    disabled={maxBidLoading || status.ended || isOwner}
+  >
+    {maxBidLoading ? "Beállítás..." : "Maximum licit beállítása"}
+  </Button>
+</div>
 
                     {listing.buy_now_price && !status.ended && !isOwner && (
                       <AlertDialog>
