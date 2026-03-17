@@ -20,11 +20,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
+import { CheckCircle2, ImageIcon, MapPin, Sparkles, Star, Truck } from "lucide-react";
 
 type Category = {
   id: string;
   name: string;
   parent_id: string | null;
+  level?: number;
   sort_order: number | null;
 };
 
@@ -36,17 +38,23 @@ type SettlementItem = {
 const settlementItems = settlements as SettlementItem[];
 
 export default function CreateListingPage() {
+  const router = useRouter();
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startingPrice, setStartingPrice] = useState("1000");
   const [durationHours, setDurationHours] = useState("24");
   const [minIncrement, setMinIncrement] = useState("100");
   const [buyNowPrice, setBuyNowPrice] = useState("");
-  const [files, setFiles] = useState<FileList | null>(null);
-  const router = useRouter();
+
+  const [files, setFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [featuredImageIndex, setFeaturedImageIndex] = useState(0);
 
   const [county, setCounty] = useState("");
+  const [countyQuery, setCountyQuery] = useState("");
   const [city, setCity] = useState("");
+  const [cityQuery, setCityQuery] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("");
 
   const [catsL1, setCatsL1] = useState<Category[]>([]);
@@ -63,13 +71,67 @@ export default function CreateListingPage() {
 
   const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
 
+  const sp = useMemo(() => Number(startingPrice), [startingPrice]);
+  const inc = useMemo(() => Number(minIncrement), [minIncrement]);
+  const hours = useMemo(() => Number(durationHours), [durationHours]);
+  const buyNow = useMemo(() => {
+    if (!buyNowPrice.trim()) return null;
+    const n = Number(buyNowPrice);
+    return Number.isFinite(n) ? n : NaN;
+  }, [buyNowPrice]);
+
+  const filteredCounties = useMemo(() => {
+    const q = countyQuery.trim().toLocaleLowerCase("hu");
+    const base = [...HUNGARIAN_COUNTIES].sort((a, b) => a.localeCompare(b, "hu"));
+
+    if (!q) return base.slice(0, 8);
+
+    return base
+      .filter((item) => item.toLocaleLowerCase("hu").includes(q))
+      .slice(0, 8);
+  }, [countyQuery]);
+
   const availableCities = useMemo(() => {
     if (!county) return [];
+
     return settlementItems
       .filter((item) => item.county === county)
       .map((item) => item.city)
       .sort((a, b) => a.localeCompare(b, "hu"));
   }, [county]);
+
+  const filteredCities = useMemo(() => {
+    const q = cityQuery.trim().toLocaleLowerCase("hu");
+
+    if (!county) return [];
+
+    if (!q) return availableCities.slice(0, 10);
+
+    return availableCities
+      .filter((item) => item.toLocaleLowerCase("hu").includes(q))
+      .slice(0, 10);
+  }, [availableCities, cityQuery, county]);
+
+  const selectedCategoryLabel = useMemo(() => {
+    if (catL3) return catsL3.find((x) => x.id === catL3)?.name ?? "";
+    if (catL2) return catsL2.find((x) => x.id === catL2)?.name ?? "";
+    if (catL1) return catsL1.find((x) => x.id === catL1)?.name ?? "";
+    return "";
+  }, [catL1, catL2, catL3, catsL1, catsL2, catsL3]);
+
+  const featuredPreviewUrl = previewUrls[featuredImageIndex] ?? null;
+
+  const canSubmit = useMemo(() => {
+    if (!title.trim()) return false;
+    if (!county) return false;
+    if (!city) return false;
+    if (!deliveryMode) return false;
+    if (!Number.isFinite(sp) || sp <= 0) return false;
+    if (!Number.isFinite(inc) || inc <= 0) return false;
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 72) return false;
+    if (buyNow !== null && (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)) return false;
+    return true;
+  }, [title, county, city, deliveryMode, sp, inc, hours, buyNow]);
 
   function safeFileName(name: string) {
     return name
@@ -82,8 +144,9 @@ export default function CreateListingPage() {
   async function loadLevel1() {
     const { data, error } = await supabase
       .from("categories")
-      .select("id,name,parent_id,sort_order")
-      .is("parent_id", null)
+      .select("id,name,parent_id,level,sort_order")
+      .eq("level", 1)
+      .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
@@ -95,11 +158,13 @@ export default function CreateListingPage() {
     setCatsL1((data ?? []) as Category[]);
   }
 
-  async function loadChildren(parentId: string) {
+  async function loadChildren(parentId: string, level: 2 | 3) {
     const { data, error } = await supabase
       .from("categories")
-      .select("id,name,parent_id,sort_order")
+      .select("id,name,parent_id,level,sort_order")
       .eq("parent_id", parentId)
+      .eq("level", level)
+      .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
@@ -107,9 +172,19 @@ export default function CreateListingPage() {
     return (data ?? []) as Category[];
   }
 
+  function handleFilesChange(fileList: FileList | null) {
+    const nextFiles = fileList ? Array.from(fileList) : [];
+    setFiles(nextFiles);
+    setFeaturedImageIndex(0);
+
+    setPreviewUrls((prev) => {
+      prev.forEach((url) => URL.revokeObjectURL(url));
+      return nextFiles.map((file) => URL.createObjectURL(file));
+    });
+  }
+
   useEffect(() => {
     loadLevel1();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -121,12 +196,11 @@ export default function CreateListingPage() {
 
       if (!catL1) return;
 
-      const children = await loadChildren(catL1);
+      const children = await loadChildren(catL1, 2);
       setCatsL2(children);
     }
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catL1]);
 
   useEffect(() => {
@@ -136,38 +210,31 @@ export default function CreateListingPage() {
 
       if (!catL2) return;
 
-      const children = await loadChildren(catL2);
+      const children = await loadChildren(catL2, 3);
       setCatsL3(children);
     }
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catL2]);
 
   useEffect(() => {
     setCity("");
+    setCityQuery("");
   }, [county]);
 
-  const sp = useMemo(() => Number(startingPrice), [startingPrice]);
-  const inc = useMemo(() => Number(minIncrement), [minIncrement]);
-  const hours = useMemo(() => Number(durationHours), [durationHours]);
-  const buyNow = useMemo(() => {
-    if (!buyNowPrice.trim()) return null;
-    const n = Number(buyNowPrice);
-    return Number.isFinite(n) ? n : NaN;
-  }, [buyNowPrice]);
+  useEffect(() => {
+    setCountyQuery(county);
+  }, [county]);
 
-  const canSubmit = useMemo(() => {
-    if (!title.trim()) return false;
-    if (!county) return false;
-    if (!city) return false;
-    if (!deliveryMode) return false;
-    if (!Number.isFinite(sp) || sp <= 0) return false;
-    if (!Number.isFinite(inc) || inc <= 0) return false;
-    if (!Number.isFinite(hours) || hours <= 0) return false;
-    if (buyNow !== null && (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)) return false;
-    return true;
-  }, [title, county, city, deliveryMode, sp, inc, hours, buyNow]);
+  useEffect(() => {
+    setCityQuery(city);
+  }, [city]);
+
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [previewUrls]);
 
   async function fillFromImageWithAI() {
     if (aiImageLoading) return;
@@ -189,13 +256,13 @@ export default function CreateListingPage() {
         return;
       }
 
-      const firstFile = files[0];
-      const safeName = safeFileName(firstFile.name);
+      const selectedFile = files[featuredImageIndex] ?? files[0];
+      const safeName = safeFileName(selectedFile.name);
       const tempPath = `${uid}/ai-temp_${Date.now()}_${safeName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("listing-images")
-        .upload(tempPath, firstFile, { upsert: false });
+        .upload(tempPath, selectedFile, { upsert: false });
 
       if (uploadError) {
         toast.error(`AI előkészítés feltöltési hiba: ${uploadError.message}`);
@@ -227,29 +294,12 @@ export default function CreateListingPage() {
         return;
       }
 
-      if (result.title) {
-        setTitle(result.title);
-      }
-
-      if (result.description) {
-        setDescription(result.description);
-      }
-
-      if (result.l1Id) {
-        setCatL1(result.l1Id);
-      }
-
-      if (result.l2Id) {
-        setCatL2(result.l2Id);
-      }
-
-      if (result.l3Id) {
-        setCatL3(result.l3Id);
-      }
-
-      if (result.reason) {
-        setAiReason(result.reason);
-      }
+      if (result.title) setTitle(result.title);
+      if (result.description) setDescription(result.description);
+      if (result.l1Id) setCatL1(result.l1Id);
+      if (result.l2Id) setCatL2(result.l2Id);
+      if (result.l3Id) setCatL3(result.l3Id);
+      if (result.reason) setAiReason(result.reason);
 
       toast.success("AI kitöltés elkészült.");
     } finally {
@@ -266,7 +316,14 @@ export default function CreateListingPage() {
     if (!deliveryMode) return toast.error("Válassz átvételi módot.");
     if (!Number.isFinite(sp) || sp <= 0) return toast.error("A kezdőár legyen 0-nál nagyobb.");
     if (!Number.isFinite(inc) || inc <= 0) return toast.error("A licitlépcső legyen 0-nál nagyobb.");
-    if (!Number.isFinite(hours) || hours <= 0) return toast.error("Az időtartam legyen 0-nál nagyobb.");
+
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return toast.error("Az időtartam legyen 0-nál nagyobb.");
+    }
+
+    if (hours > 72) {
+      return toast.error("Az aukció maximális időtartama 72 óra lehet.");
+    }
 
     if (buyNow !== null) {
       if (!Number.isFinite(buyNow) || buyNow <= 0) {
@@ -285,28 +342,48 @@ export default function CreateListingPage() {
 
       if (!uid) {
         toast.error("Előbb jelentkezz be.");
-        setSubmitting(false);
         return;
       }
+
       const { data: profile, error: profileError } = await supabase
-  .from("profiles")
-  .select("phone")
-  .eq("id", uid)
-  .maybeSingle();
+        .from("profiles")
+        .select("phone")
+        .eq("id", uid)
+        .maybeSingle();
 
-if (profileError) {
-  toast.error("Nem sikerült ellenőrizni a profiladataidat.");
-  setSubmitting(false);
-  return;
-}
+      if (profileError) {
+        toast.error("Nem sikerült ellenőrizni a profiladataidat.");
+        return;
+      }
 
-const phone = (profile as { phone?: string | null } | null)?.phone?.trim();
+      const phone = (profile as { phone?: string | null } | null)?.phone?.trim();
 
-if (!phone) {
-  toast.error("Aukció indításához előbb add meg a telefonszámod a profilodban.");
-  setSubmitting(false);
-  return;
-}
+      if (!phone) {
+        toast.error("Aukció indításához előbb add meg a telefonszámod a profilodban.");
+        return;
+      }
+
+      const { data: balanceRow, error: balanceError } = await supabase
+        .from("billing_user_balances")
+        .select("balance_amount")
+        .eq("user_id", uid)
+        .maybeSingle();
+
+      if (balanceError) {
+        toast.error("Nem sikerült ellenőrizni az egyenlegedet.");
+        return;
+      }
+
+      const balanceAmount = Number(
+        (balanceRow as { balance_amount?: number } | null)?.balance_amount ?? 0
+      );
+
+      if (balanceAmount < 0) {
+        toast.error(
+          `Az egyenleged negatív (${new Intl.NumberFormat("hu-HU").format(balanceAmount)} Ft), ezért új aukciót most nem tudsz indítani.`
+        );
+        return;
+      }
 
       const endsAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
@@ -331,21 +408,35 @@ if (!phone) {
         .single();
 
       if (createErr) {
-        toast.error(createErr.message);
-        setSubmitting(false);
-        return;
-      }
+  const rawMessage = createErr.message || "Nem sikerült létrehozni az aukciót.";
+
+  if (rawMessage.includes("NEGATIVE_BALANCE_BLOCKED")) {
+    toast.error("Az egyenleged negatív, ezért új aukciót most nem tudsz indítani.");
+    return;
+  }
+
+  toast.error(rawMessage);
+  return;
+}
 
       const listingId = created.id as string;
 
       const uploadedUrls: string[] = [];
       const uploadedPaths: string[] = [];
 
-      if (files && files.length > 0) {
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i];
+      if (files.length > 0) {
+        const orderedFiles = [...files];
+        const safeFeaturedIndex = Math.min(featuredImageIndex, orderedFiles.length - 1);
+
+        if (safeFeaturedIndex > 0) {
+          const [featured] = orderedFiles.splice(safeFeaturedIndex, 1);
+          orderedFiles.unshift(featured);
+        }
+
+        for (let i = 0; i < orderedFiles.length; i++) {
+          const f = orderedFiles[i];
           const safeName = safeFileName(f.name);
-          const path = `${uid}/${listingId}_${Date.now()}_${safeName}`;
+          const path = `${uid}/${listingId}_${Date.now()}_${i}_${safeName}`;
 
           const { error: upErr } = await supabase.storage
             .from("listing-images")
@@ -353,7 +444,6 @@ if (!phone) {
 
           if (upErr) {
             toast.error(`Feltöltési hiba: ${upErr.message}`);
-            setSubmitting(false);
             return;
           }
 
@@ -371,15 +461,14 @@ if (!phone) {
 
         if (updErr) {
           toast.error(updErr.message);
-          setSubmitting(false);
           return;
         }
       }
 
       toast.success("Aukció létrehozva ✅");
-router.push(`/listing/${listingId}`);
-router.refresh();
-return;
+      router.push(`/listing/${listingId}`);
+      router.refresh();
+      return;
     } finally {
       setSubmitting(false);
     }
@@ -399,7 +488,7 @@ return;
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-              Add meg a termék adatait, válassz helyszínt és átvételi módot, majd indítsd el az aukciót modern, prémium felületen.
+              Tölts fel jó képeket, válaszd ki a főkategóriát, add meg a helyszínt és indítsd el az aukciót prémium megjelenéssel.
             </p>
           </div>
 
@@ -423,38 +512,100 @@ return;
             <CardHeader>
               <CardTitle>Termék és aukció adatai</CardTitle>
               <CardDescription>
-                Tölts fel képet, kérj AI segítséget, majd ellenőrizd az adatokat.
+                Tölts fel képet, válaszd ki a főképét, kérj AI segítséget, majd ellenőrizd az adatokat.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>Képek</Label>
+
                   <Input
                     type="file"
                     multiple
                     accept="image/*"
-                    onChange={(e) => setFiles(e.target.files)}
+                    onChange={(e) => handleFilesChange(e.target.files)}
                     className="h-12 rounded-xl"
                   />
 
                   <p className="text-xs text-muted-foreground">
-                    Tipp: 3–6 kép ideális, jó fényben, több szögből.
+                    Tipp: 3–6 kép ideális, jó fényben, több szögből. A kiválasztott főkép fog elöl megjelenni a hirdetésben.
                   </p>
+
+                  {featuredPreviewUrl ? (
+                    <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
+                      <div className="border-b bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
+                        Főkép előnézet
+                      </div>
+                      <div className="flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.06),transparent_40%),#f8fafc] p-4">
+                        <img
+                          src={featuredPreviewUrl}
+                          alt="featured-preview"
+                          className="max-h-[360px] w-full rounded-2xl object-contain"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-48 items-center justify-center rounded-[1.5rem] border border-dashed border-slate-300 bg-white text-sm text-slate-400">
+                      <ImageIcon className="mr-2 h-5 w-5" />
+                      Még nincs kiválasztott kép
+                    </div>
+                  )}
+
+                  {previewUrls.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-slate-600">Válaszd ki a főképét</div>
+
+                      <div className="flex gap-3 overflow-auto pb-1">
+                        {previewUrls.map((url, index) => (
+                          <button
+                            key={`${url}-${index}`}
+                            type="button"
+                            onClick={() => setFeaturedImageIndex(index)}
+                            className={`relative shrink-0 overflow-hidden rounded-2xl border transition ${
+                              featuredImageIndex === index
+                                ? "border-primary ring-2 ring-primary/30"
+                                : "border-slate-200 hover:border-slate-300"
+                            }`}
+                          >
+                            <img
+                              src={url}
+                              alt={`preview-${index}`}
+                              className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                            />
+
+                            <div className="absolute left-2 top-2">
+                              {featuredImageIndex === index ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white">
+                                  <Star className="h-3 w-3 fill-current" />
+                                  Főkép
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">
+                                  #{index + 1}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <Button
                     type="button"
                     variant="outline"
                     className="rounded-xl"
                     onClick={fillFromImageWithAI}
-                    disabled={aiImageLoading || !files || files.length === 0}
+                    disabled={aiImageLoading || files.length === 0}
                   >
-                    {aiImageLoading ? "AI elemzés folyamatban..." : "✨ AI kitöltés képből"}
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {aiImageLoading ? "AI elemzés folyamatban..." : "AI kitöltés a kiválasztott képből"}
                   </Button>
 
                   <p className="text-xs text-muted-foreground">
-                    Az AI az első feltöltött képből megpróbál címet, leírást és kategóriát javasolni.
+                    Az AI a kiválasztott főkép alapján megpróbál címet, leírást és kategóriát javasolni.
                   </p>
 
                   {aiReason ? (
@@ -483,10 +634,10 @@ return;
                 <Label htmlFor="desc">Leírás</Label>
                 <Textarea
                   id="desc"
-                  placeholder="Írd le az állapotot, tartozékokat, átvételt, stb."
+                  placeholder="Írd le az állapotot, tartozékokat, átvételt, méretet, hibákat, mindent, ami segíti a licitálókat."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="min-h-[140px] rounded-xl"
+                  className="min-h-[160px] rounded-xl"
                 />
               </div>
 
@@ -515,10 +666,22 @@ return;
                   <Label>Időtartam (óra)</Label>
                   <Input
                     value={durationHours}
-                    onChange={(e) => setDurationHours(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^\d]/g, "");
+                      if (!value) {
+                        setDurationHours("");
+                        return;
+                      }
+
+                      const num = Number(value);
+                      setDurationHours(String(Math.min(num, 72)));
+                    }}
                     inputMode="numeric"
                     className="h-12 rounded-xl"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum 1 óra, maximum 72 óra.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -601,16 +764,10 @@ return;
                   {finalCategoryId ? (
                     <div className="text-xs text-muted-foreground">
                       Kiválasztva:{" "}
-                      <span className="font-medium text-foreground">
-                        {catL3
-                          ? catsL3.find((x) => x.id === catL3)?.name
-                          : catL2
-                          ? catsL2.find((x) => x.id === catL2)?.name
-                          : catsL1.find((x) => x.id === catL1)?.name}
-                      </span>
+                      <span className="font-medium text-foreground">{selectedCategoryLabel}</span>
                     </div>
                   ) : (
-                    <div className="text-xs text-muted-foreground">Nem kötelező, de ajánlott.</div>
+                    <div className="text-xs text-muted-foreground">Nem kötelező, de erősen ajánlott.</div>
                   )}
                 </div>
               </div>
@@ -618,38 +775,80 @@ return;
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Vármegye</Label>
-                  <select
-                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
-                    value={county}
-                    onChange={(e) => setCounty(e.target.value)}
-                  >
-                    <option value="">Válassz vármegyét</option>
-                    {HUNGARIAN_COUNTIES.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
+                  <Input
+                    placeholder="Kezdd el beírni, pl. Pest"
+                    value={countyQuery}
+                    onChange={(e) => {
+                      setCountyQuery(e.target.value);
+                      setCounty("");
+                    }}
+                    className="h-12 rounded-xl"
+                  />
+
+                  {filteredCounties.length > 0 ? (
+                    <div className="max-h-48 overflow-auto rounded-2xl border bg-white p-2">
+                      <div className="flex flex-wrap gap-2">
+                        {filteredCounties.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setCounty(item);
+                              setCountyQuery(item);
+                            }}
+                            className={`rounded-full px-3 py-1.5 text-sm transition ${
+                              county === item
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
                   <Label>Település</Label>
-                  <select
-                    className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                  <Input
+                    placeholder={county ? "Kezdd el beírni, pl. Cegléd" : "Előbb válassz vármegyét"}
+                    value={cityQuery}
+                    onChange={(e) => {
+                      setCityQuery(e.target.value);
+                      setCity("");
+                    }}
                     disabled={!county}
-                  >
-                    <option value="">{county ? "Válassz települést" : "Előbb válassz vármegyét"}</option>
-                    {availableCities.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
+                    className="h-12 rounded-xl"
+                  />
+
+                  {county && filteredCities.length > 0 ? (
+                    <div className="max-h-48 overflow-auto rounded-2xl border bg-white p-2">
+                      <div className="flex flex-wrap gap-2">
+                        {filteredCities.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setCity(item);
+                              setCityQuery(item);
+                            }}
+                            className={`rounded-full px-3 py-1.5 text-sm transition ${
+                              city === item
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
-              
+
               <Button
                 className="h-12 w-full rounded-xl"
                 onClick={createListing}
@@ -671,6 +870,31 @@ return;
             </CardHeader>
 
             <CardContent className="space-y-4 text-sm">
+              {featuredPreviewUrl ? (
+                <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
+                  <img
+                    src={featuredPreviewUrl}
+                    alt="cover-preview"
+                    className="h-56 w-full object-cover"
+                  />
+                  <div className="border-t bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                    Ez lesz a főkép a hirdetésben
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-56 items-center justify-center rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 text-slate-400">
+                  <ImageIcon className="mr-2 h-5 w-5" />
+                  Főkép előnézet
+                </div>
+              )}
+
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Cím</div>
+                <div className="mt-1 text-base font-semibold text-slate-900">
+                  {title.trim() || "Még nincs megadva"}
+                </div>
+              </div>
+
               <div className="rounded-2xl bg-slate-50 p-4">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Kezdőár</div>
                 <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
@@ -689,7 +913,7 @@ return;
                 <div className="rounded-2xl bg-slate-50 p-3">
                   <div className="text-xs uppercase tracking-wide text-slate-500">Időtartam</div>
                   <div className="mt-1 font-semibold text-slate-900">
-                    {Number.isFinite(hours) ? `${hours} óra` : "-"}
+                    {Number.isFinite(hours) ? `${Math.min(hours, 72)} óra` : "-"}
                   </div>
                 </div>
               </div>
@@ -709,14 +933,27 @@ return;
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Helyszín</div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">Kategória</div>
+                <div className="mt-1 font-semibold text-slate-900">
+                  {selectedCategoryLabel || "Nincs megadva"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                  <MapPin className="h-3.5 w-3.5" />
+                  Helyszín
+                </div>
                 <div className="mt-1 font-semibold text-slate-900">
                   {county && city ? `${county} · ${city}` : "Nincs megadva"}
                 </div>
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Átvételi mód</div>
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                  <Truck className="h-3.5 w-3.5" />
+                  Átvételi mód
+                </div>
                 <div className="mt-1 font-semibold text-slate-900">
                   {deliveryMode
                     ? DELIVERY_MODES.find((x) => x.value === deliveryMode)?.label ?? deliveryMode
@@ -725,10 +962,13 @@ return;
               </div>
 
               <div className="rounded-2xl border p-4 text-xs text-muted-foreground">
-                <div className="mb-2 font-medium text-foreground">Tippek</div>
+                <div className="mb-2 flex items-center gap-2 font-medium text-foreground">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Tippek
+                </div>
                 <ul className="list-disc space-y-1 pl-4">
-                  <li>Legyen jó a fő kép — ez adja az első benyomást.</li>
-                  <li>Írj pontos átvételi információkat.</li>
+                  <li>Legyen jó a főkép — ez adja az első benyomást.</li>
+                  <li>Írj pontos állapotot, méretet, hibát is.</li>
                   <li>Ne legyen túl kicsi a licitlépcső.</li>
                   <li>A villámár segíthet gyorsabban lezárni az aukciót.</li>
                 </ul>
