@@ -25,7 +25,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatHuf } from "@/lib/format";
-import { Clock, Gavel, Heart, ChevronLeft, ImageIcon, MapPin, Truck } from "lucide-react";
+import {
+  Clock,
+  Gavel,
+  Heart,
+  ChevronLeft,
+  ImageIcon,
+  MapPin,
+  Truck,
+  Star,
+  UserRound,
+  MessageSquare,
+} from "lucide-react";
 import { DELIVERY_MODES } from "@/lib/hungary";
 
 type Listing = {
@@ -71,6 +82,27 @@ type RelatedListing = {
   categories: { name: string } | null;
 };
 
+type PublicProfileRow = {
+  id: string;
+  full_name: string | null;
+  public_display_name?: string | null;
+};
+
+type ListingCommentRow = {
+  id: string;
+  listing_id: string;
+  user_id: string;
+  parent_id: string | null;
+  body: string;
+  created_at: string;
+};
+
+type RatingSummaryRow = {
+  user_id: string;
+  average_rating: number | null;
+  review_count: number | null;
+};
+
 function getDeliveryModeLabel(value: string) {
   return DELIVERY_MODES.find((x) => x.value === value)?.label ?? value;
 }
@@ -103,6 +135,19 @@ export default function ListingDetailPage() {
   const [maxBidAmount, setMaxBidAmount] = useState("");
   const [maxBidLoading, setMaxBidLoading] = useState(false);
 
+  const [sellerDisplayName, setSellerDisplayName] = useState("");
+  const [sellerRatingText, setSellerRatingText] = useState("Még nincs");
+  const [sellerReviewCount, setSellerReviewCount] = useState<number>(0);
+  const [currentLeaderDisplayName, setCurrentLeaderDisplayName] = useState("");
+  const [bidUserNames, setBidUserNames] = useState<Record<string, string>>({});
+
+  const [comments, setComments] = useState<ListingCommentRow[]>([]);
+  const [commentUserNames, setCommentUserNames] = useState<Record<string, string>>({});
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
     setNow(Date.now());
@@ -117,23 +162,42 @@ export default function ListingDetailPage() {
     return { cleaned, n };
   }
 
+  function toPublicName(fullName: string | null | undefined) {
+    if (!fullName) return "Ismeretlen felhasználó";
+
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "Ismeretlen felhasználó";
+    if (parts.length === 1) return parts[0];
+
+    const firstName = parts[parts.length - 1];
+    const lastNameInitial = parts[0].charAt(0).toUpperCase();
+
+    return `${firstName} ${lastNameInitial}.`;
+  }
+
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     setSessionUserId(data.session?.user?.id ?? null);
   }
 
-  function toPublicWinnerName(fullName: string | null | undefined) {
-  if (!fullName) return "Ismeretlen felhasználó";
+  async function loadPublicNamesForUserIds(userIds: string[]) {
+    const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return {};
 
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "Ismeretlen felhasználó";
-  if (parts.length === 1) return parts[0];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,full_name,public_display_name")
+      .in("id", uniqueIds);
 
-  const firstName = parts[parts.length - 1];
-  const lastNameInitial = parts[0].charAt(0).toUpperCase();
+    if (error || !data) return {};
 
-  return `${firstName} ${lastNameInitial}.`;
-}
+    const map: Record<string, string> = {};
+    (data as PublicProfileRow[]).forEach((item) => {
+      map[item.id] = item.public_display_name || toPublicName(item.full_name);
+    });
+
+    return map;
+  }
 
   async function loadRelated(categoryName: string | null) {
     if (!categoryName) {
@@ -166,6 +230,72 @@ export default function ListingDetailPage() {
     setRelatedLoading(false);
   }
 
+  async function loadWinnerDisplayName(winnerUserId: string | null) {
+    if (!winnerUserId) {
+      setWinnerDisplayName("");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("full_name, public_display_name")
+      .eq("id", winnerUserId)
+      .maybeSingle();
+
+    if (error || !data) {
+      setWinnerDisplayName("Ismeretlen felhasználó");
+      return;
+    }
+
+    const publicName =
+      (data as any)?.public_display_name ||
+      toPublicName((data as any)?.full_name);
+
+    setWinnerDisplayName(publicName || "Ismeretlen felhasználó");
+  }
+
+  async function loadSellerMeta(sellerUserId: string | null) {
+    if (!sellerUserId) {
+      setSellerDisplayName("Ismeretlen hirdető");
+      setSellerRatingText("Még nincs");
+      setSellerReviewCount(0);
+      return;
+    }
+
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("id,full_name,public_display_name")
+      .eq("id", sellerUserId)
+      .maybeSingle();
+
+    if (profileData) {
+      const row = profileData as PublicProfileRow;
+      setSellerDisplayName(row.public_display_name || toPublicName(row.full_name));
+    } else {
+      setSellerDisplayName("Ismeretlen hirdető");
+    }
+
+    const { data: ratingData } = await supabase
+      .from("user_rating_summary")
+      .select("user_id,average_rating,review_count")
+      .eq("user_id", sellerUserId)
+      .maybeSingle();
+
+    if (ratingData) {
+      const row = ratingData as RatingSummaryRow;
+      if (row.average_rating !== null && row.average_rating !== undefined) {
+        setSellerRatingText(row.average_rating.toFixed(1).replace(".", ","));
+        setSellerReviewCount(row.review_count ?? 0);
+      } else {
+        setSellerRatingText("Még nincs");
+        setSellerReviewCount(0);
+      }
+    } else {
+      setSellerRatingText("Még nincs");
+      setSellerReviewCount(0);
+    }
+  }
+
   async function loadListing() {
     setLoadError("");
 
@@ -185,36 +315,13 @@ export default function ListingDetailPage() {
 
     setListing(data as any);
 
-const first = (data as any)?.image_urls?.[0] ?? null;
-setSelectedImage(first);
+    const first = (data as any)?.image_urls?.[0] ?? null;
+    setSelectedImage(first);
 
-await loadWinnerDisplayName((data as any)?.winner_user_id ?? null);
-await loadRelated((data as any)?.categories?.name ?? null);
+    await loadWinnerDisplayName((data as any)?.winner_user_id ?? null);
+    await loadSellerMeta((data as any)?.user_id ?? null);
+    await loadRelated((data as any)?.categories?.name ?? null);
   }
-
-  async function loadWinnerDisplayName(winnerUserId: string | null) {
-  if (!winnerUserId) {
-    setWinnerDisplayName("");
-    return;
-  }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("full_name, public_display_name")
-    .eq("id", winnerUserId)
-    .maybeSingle();
-
-  if (error || !data) {
-    setWinnerDisplayName("Ismeretlen felhasználó");
-    return;
-  }
-
-  const publicName =
-    (data as any)?.public_display_name ||
-    toPublicWinnerName((data as any)?.full_name);
-
-  setWinnerDisplayName(publicName || "Ismeretlen felhasználó");
-}
 
   async function loadBids() {
     const { data, error } = await supabase
@@ -223,7 +330,58 @@ await loadRelated((data as any)?.categories?.name ?? null);
       .eq("listing_id", listingId)
       .order("created_at", { ascending: false });
 
-    if (!error) setBids((data ?? []) as any);
+    if (!error) {
+      const rows = (data ?? []) as BidRow[];
+      setBids(rows);
+
+      const names = await loadPublicNamesForUserIds(
+        rows.map((x) => x.user_id).filter(Boolean) as string[]
+      );
+      setBidUserNames(names);
+    }
+  }
+
+  async function loadCurrentLeader() {
+    const { data, error } = await supabase
+      .from("bids")
+      .select("id,amount,created_at,user_id")
+      .eq("listing_id", listingId)
+      .order("amount", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (error || !data || data.length === 0 || !data[0]?.user_id) {
+      setCurrentLeaderDisplayName("");
+      return;
+    }
+
+    const leaderUserId = data[0].user_id as string;
+    const names = await loadPublicNamesForUserIds([leaderUserId]);
+    setCurrentLeaderDisplayName(names[leaderUserId] || "Ismeretlen felhasználó");
+  }
+
+  async function loadComments() {
+    setCommentsLoading(true);
+
+    const { data, error } = await supabase
+      .from("listing_comments")
+      .select("id,listing_id,user_id,parent_id,body,created_at")
+      .eq("listing_id", listingId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      setComments([]);
+      setCommentUserNames({});
+      setCommentsLoading(false);
+      return;
+    }
+
+    const rows = (data ?? []) as ListingCommentRow[];
+    setComments(rows);
+
+    const names = await loadPublicNamesForUserIds(rows.map((x) => x.user_id));
+    setCommentUserNames(names);
+    setCommentsLoading(false);
   }
 
   const status = useMemo(() => {
@@ -263,51 +421,52 @@ await loadRelated((data as any)?.categories?.name ?? null);
   }, [bidValidation.error]);
 
   async function buyNow() {
-  if (!sessionUserId) {
-    toast.error("Be kell jelentkezni.");
-    return;
-  }
-
-  if (!listing?.buy_now_price) {
-    toast.error("Ehhez nincs villámár.");
-    return;
-  }
-
-  setBuyNowLoading(true);
-
-  try {
-    const { error } = await supabase.rpc("buy_now_listing", {
-      p_listing_id: listing.id,
-    });
-
-    if (error) {
-      toast.error(error.message);
+    if (!sessionUserId) {
+      toast.error("Be kell jelentkezni.");
       return;
     }
 
-    const notifyRes = await fetch("/api/notifications/buy-now", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ listingId: listing.id }),
-    });
-
-    const notifyData = await notifyRes.json().catch(() => null);
-
-    if (!notifyRes.ok) {
-      toast.error(notifyData?.error || "A vásárlás sikerült, de az email küldés nem.");
-    } else {
-      toast.success("Villámáron megvásároltad a terméket ⚡");
+    if (!listing?.buy_now_price) {
+      toast.error("Ehhez nincs villámár.");
+      return;
     }
 
-    setBuyNowSuccess(true);
-    await loadListing();
-    await loadBids();
-  } finally {
-    setBuyNowLoading(false);
+    setBuyNowLoading(true);
+
+    try {
+      const { error } = await supabase.rpc("buy_now_listing", {
+        p_listing_id: listing.id,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      const notifyRes = await fetch("/api/notifications/buy-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+
+      const notifyData = await notifyRes.json().catch(() => null);
+
+      if (!notifyRes.ok) {
+        toast.error(notifyData?.error || "A vásárlás sikerült, de az email küldés nem.");
+      } else {
+        toast.success("Villámáron megvásároltad a terméket ⚡");
+      }
+
+      setBuyNowSuccess(true);
+      await loadListing();
+      await loadBids();
+      await loadCurrentLeader();
+    } finally {
+      setBuyNowLoading(false);
+    }
   }
-}
 
   async function placeBid() {
     setBidTouched(true);
@@ -322,79 +481,82 @@ await loadRelated((data as any)?.categories?.name ?? null);
     const amount = n;
 
     const { data: s } = await supabase.auth.getSession();
-const uid = s.session?.user?.id;
-if (!uid) return toast.error("Licitáláshoz be kell jelentkezni.");
+    const uid = s.session?.user?.id;
+    if (!uid) return toast.error("Licitáláshoz be kell jelentkezni.");
 
-const { error } = await supabase.rpc("place_bid", {
-  p_listing_id: listingId,
-  p_amount: amount,
-});
+    const { error } = await supabase.rpc("place_bid", {
+      p_listing_id: listingId,
+      p_amount: amount,
+    });
 
-if (error) return toast.error(error.message);
+    if (error) return toast.error(error.message);
 
-await fetch("/api/notifications/new-bid", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    listingId,
-    bidderUserId: uid,
-    amount,
-  }),
-});
+    await fetch("/api/notifications/new-bid", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        listingId,
+        bidderUserId: uid,
+        amount,
+      }),
+    });
 
-toast.success("Licit sikeres ✅");
+    toast.success("Licit sikeres ✅");
     setBidAmount("");
     setBidTouched(false);
     await loadListing();
     await loadBids();
+    await loadCurrentLeader();
   }
+
   async function placeMaxBid() {
-  if (!sessionUserId) {
-    toast.error("Licitáláshoz be kell jelentkezni.");
-    return;
-  }
-
-  if (isOwner) {
-    toast.error("Saját aukcióra nem licitálhatsz.");
-    return;
-  }
-
-  if (status.ended) {
-    toast.error("Az aukció lezárult.");
-    return;
-  }
-
-  const raw = maxBidAmount.trim().replace(/\s+/g, "").replace(/,/g, ".");
-  const amount = Number(raw);
-
-  if (!Number.isFinite(amount)) {
-    toast.error("Adj meg érvényes maximum licitet.");
-    return;
-  }
-
-  setMaxBidLoading(true);
-
-  try {
-    const { error } = await supabase.rpc("place_max_bid", {
-      p_listing_id: listingId,
-      p_max_amount: amount,
-    });
-
-    if (error) {
-      toast.error(error.message);
+    if (!sessionUserId) {
+      toast.error("Licitáláshoz be kell jelentkezni.");
       return;
     }
 
-    toast.success("Maximum licit sikeresen beállítva ✅");
-    setMaxBidAmount("");
-    await loadListing();
-    await loadBids();
-  } finally {
-    setMaxBidLoading(false);
+    if (isOwner) {
+      toast.error("Saját aukcióra nem licitálhatsz.");
+      return;
+    }
+
+    if (status.ended) {
+      toast.error("Az aukció lezárult.");
+      return;
+    }
+
+    const raw = maxBidAmount.trim().replace(/\s+/g, "").replace(/,/g, ".");
+    const amount = Number(raw);
+
+    if (!Number.isFinite(amount)) {
+      toast.error("Adj meg érvényes maximum licitet.");
+      return;
+    }
+
+    setMaxBidLoading(true);
+
+    try {
+      const { error } = await supabase.rpc("place_max_bid", {
+        p_listing_id: listingId,
+        p_max_amount: amount,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success("Maximum licit sikeresen beállítva ✅");
+      setMaxBidAmount("");
+      await loadListing();
+      await loadBids();
+      await loadCurrentLeader();
+    } finally {
+      setMaxBidLoading(false);
+    }
   }
-}
 
   async function submitReport() {
     if (!sessionUserId) {
@@ -430,6 +592,45 @@ toast.success("Licit sikeres ✅");
     setReportDetails("");
   }
 
+  async function submitComment(parentId: string | null = null) {
+    if (!sessionUserId) {
+      toast.error("Kommenteléshez be kell jelentkezni.");
+      return;
+    }
+
+    const body = (parentId ? replyTexts[parentId] : commentText).trim();
+    if (!body) {
+      toast.error(parentId ? "Írj választ." : "Írj kérdést vagy hozzászólást.");
+      return;
+    }
+
+    setCommentSubmitting(true);
+
+    const { error } = await supabase.from("listing_comments").insert({
+      listing_id: listingId,
+      user_id: sessionUserId,
+      parent_id: parentId,
+      body,
+    });
+
+    setCommentSubmitting(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (parentId) {
+      setReplyTexts((prev) => ({ ...prev, [parentId]: "" }));
+      toast.success("Válasz elküldve.");
+    } else {
+      setCommentText("");
+      toast.success("Komment elküldve.");
+    }
+
+    await loadComments();
+  }
+
   void tick;
 
   function timeLeftText(iso: string) {
@@ -458,6 +659,26 @@ toast.success("Licit sikeres ✅");
     if (days > 0) return `${days} nap`;
     if (hours > 0) return `${hours} óra ${minutes} perc`;
     return `${minutes} perc`;
+  }
+
+  const topBidForDisplay = useMemo(() => {
+    if (!bids.length) return null;
+
+    const sorted = [...bids].sort((a, b) => {
+      if (b.amount !== a.amount) return b.amount - a.amount;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+
+    return sorted[0] ?? null;
+  }, [bids]);
+
+  const rootComments = useMemo(
+    () => comments.filter((x) => !x.parent_id),
+    [comments]
+  );
+
+  function getReplies(parentId: string) {
+    return comments.filter((x) => x.parent_id === parentId);
   }
 
   useEffect(() => {
@@ -490,6 +711,8 @@ toast.success("Licit sikeres ✅");
         await loadSession();
         await loadListing();
         await loadBids();
+        await loadCurrentLeader();
+        await loadComments();
       } catch (e: any) {
         if (mounted) {
           setLoadError(e?.message ?? "Váratlan hiba történt.");
@@ -509,12 +732,17 @@ toast.success("Licit sikeres ✅");
 
     const channel = supabase
       .channel(`realtime-listing-${listingId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "bids" }, () => {
-        loadListing();
-        loadBids();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "bids" }, async () => {
+        await loadListing();
+        await loadBids();
+        await loadCurrentLeader();
       })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "listings" }, () => {
-        loadListing();
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "listings" }, async () => {
+        await loadListing();
+        await loadCurrentLeader();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "listing_comments" }, async () => {
+        await loadComments();
       })
       .subscribe();
 
@@ -575,6 +803,8 @@ toast.success("Licit sikeres ✅");
                 setPageLoading(true);
                 await loadListing();
                 await loadBids();
+                await loadCurrentLeader();
+                await loadComments();
                 setPageLoading(false);
               }}
             >
@@ -620,14 +850,16 @@ toast.success("Licit sikeres ✅");
                   {listing.categories.name}
                 </Badge>
               )}
-                {buyNowSuccess && (
-  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-    <div className="font-semibold text-emerald-900">Sikeres villámáras vásárlás ⚡</div>
-    <div className="mt-1 text-emerald-800">
-      A vásárlás rögzítve lett. A további részleteket emailben is elküldtük az eladónak és a vevőnek.
-    </div>
-  </div>
-)}
+
+              {buyNowSuccess && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                  <div className="font-semibold text-emerald-900">Sikeres villámáras vásárlás ⚡</div>
+                  <div className="mt-1 text-emerald-800">
+                    A vásárlás rögzítve lett. A további részleteket emailben is elküldtük az eladónak és a vevőnek.
+                  </div>
+                </div>
+              )}
+
               {status.ended ? (
                 listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price ? (
                   <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
@@ -763,6 +995,7 @@ toast.success("Licit sikeres ✅");
             <TabsList className="rounded-xl">
               <TabsTrigger value="desc">Leírás</TabsTrigger>
               <TabsTrigger value="bids">Licitnapló</TabsTrigger>
+              <TabsTrigger value="qa">Kérdések</TabsTrigger>
             </TabsList>
 
             <TabsContent value="desc" className="mt-4">
@@ -842,12 +1075,125 @@ toast.success("Licit sikeres ✅");
                             </TableCell>
                             <TableCell className="font-medium">{formatHuf(b.amount)}</TableCell>
                             <TableCell className="text-muted-foreground">
-                              {b.user_id ? b.user_id.slice(0, 8) + "…" : "-"}
+                              {b.user_id ? bidUserNames[b.user_id] || "Betöltés..." : "-"}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="qa" className="mt-4">
+              <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+                <CardHeader>
+                  <CardTitle className="text-lg">Kérdések és válaszok</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="mb-2 text-sm font-medium text-slate-900">
+                      Kérdezz a termékről nyilvánosan
+                    </div>
+                    <textarea
+                      className="min-h-[110px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
+                      placeholder="Pl. Mekkora a cipő pontos mérete? Van doboza? Személyes átvétel megoldható?"
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <Button onClick={() => submitComment(null)} disabled={commentSubmitting}>
+                        {commentSubmitting ? "Küldés..." : "Kérdés elküldése"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {commentsLoading ? (
+                    <p className="text-sm text-muted-foreground">Kommentek betöltése...</p>
+                  ) : rootComments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Még nincs kérdés vagy komment.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {rootComments.map((comment) => {
+                        const replies = getReplies(comment.id);
+                        const isSellerComment = listing.user_id === comment.user_id;
+
+                        return (
+                          <div key={comment.id} className="rounded-2xl border border-slate-200 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">
+                                  {commentUserNames[comment.user_id] || "Ismeretlen felhasználó"}
+                                  {isSellerComment ? (
+                                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                      Eladó
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {new Date(comment.created_at).toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
+                              {comment.body}
+                            </div>
+
+                            <div className="mt-4 space-y-3 border-l-2 border-slate-100 pl-4">
+                              {replies.map((reply) => {
+                                const isSellerReply = listing.user_id === reply.user_id;
+
+                                return (
+                                  <div key={reply.id} className="rounded-xl bg-slate-50 p-3">
+                                    <div className="text-sm font-semibold text-slate-900">
+                                      {commentUserNames[reply.user_id] || "Ismeretlen felhasználó"}
+                                      {isSellerReply ? (
+                                        <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                          Eladó válasza
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      {new Date(reply.created_at).toLocaleString()}
+                                    </div>
+                                    <div className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
+                                      {reply.body}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {sessionUserId ? (
+                                <div className="rounded-xl border border-slate-200 p-3">
+                                  <textarea
+                                    className="min-h-[90px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
+                                    placeholder="Írj választ vagy további kérdést..."
+                                    value={replyTexts[comment.id] ?? ""}
+                                    onChange={(e) =>
+                                      setReplyTexts((prev) => ({
+                                        ...prev,
+                                        [comment.id]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <div className="mt-3 flex justify-end">
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => submitComment(comment.id)}
+                                      disabled={commentSubmitting}
+                                    >
+                                      Válasz küldése
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -972,10 +1318,47 @@ toast.success("Licit sikeres ✅");
 
               <CardContent className="space-y-4">
                 <div className="grid gap-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Hirdető</div>
+                        <a
+                          href={listing.user_id ? `/profile/${listing.user_id}` : "#"}
+                          className="mt-1 inline-flex items-center gap-2 font-semibold text-slate-900 hover:underline"
+                        >
+                          <UserRound className="h-4 w-4" />
+                          {sellerDisplayName || "Betöltés..."}
+                        </a>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Értékelés</div>
+                        <div className="mt-1 inline-flex items-center gap-1 font-semibold text-slate-900">
+                          <Star className="h-4 w-4 fill-current" />
+                          {sellerRatingText}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {sellerReviewCount > 0 ? `${sellerReviewCount} értékelés` : "Még nincs értékelés"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <div className="text-xs uppercase tracking-wide text-slate-500">Jelenlegi licit</div>
                     <div className="mt-1 text-3xl font-black tracking-tight text-slate-900">
                       {formatHuf(listing.current_price)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                    <div className="text-xs uppercase tracking-wide text-indigo-700">Jelenleg vezet</div>
+                    <div className="mt-1 font-semibold text-indigo-900">
+                      {status.ended
+                        ? winnerDisplayName || "Nincs nyertes"
+                        : topBidForDisplay?.user_id
+                        ? currentLeaderDisplayName || "Betöltés..."
+                        : "Még nincs licit"}
                     </div>
                   </div>
 
@@ -1040,10 +1423,10 @@ toast.success("Licit sikeres ✅");
                       Végső ár: {formatHuf(listing.final_price ?? listing.current_price)}
                     </div>
                     {listing.winner_user_id ? (
-  <div className="mt-1 text-slate-600">
-    Nyertes: {winnerDisplayName || "Betöltés..."}
-  </div>
-) : null}
+                      <div className="mt-1 text-slate-600">
+                        Nyertes: {winnerDisplayName || "Betöltés..."}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1131,31 +1514,31 @@ toast.success("Licit sikeres ✅");
                     </Button>
 
                     <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
-  <div>
-    <div className="text-sm font-medium text-slate-900">Automatikus maximum licit</div>
-    <div className="text-xs text-muted-foreground mt-1">
-      Add meg a legmagasabb összeget, ameddig hajlandó vagy elmenni, a rendszer pedig automatikusan csak a szükséges minimumra licitál helyetted.
-    </div>
-  </div>
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">Automatikus maximum licit</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Add meg a legmagasabb összeget, ameddig hajlandó vagy elmenni, a rendszer pedig automatikusan csak a szükséges minimumra licitál helyetted.
+                        </div>
+                      </div>
 
-  <Input
-    placeholder="Pl. 50000"
-    value={maxBidAmount}
-    onChange={(e) => setMaxBidAmount(e.target.value)}
-    inputMode="decimal"
-    className="h-12 rounded-xl"
-  />
+                      <Input
+                        placeholder="Pl. 50000"
+                        value={maxBidAmount}
+                        onChange={(e) => setMaxBidAmount(e.target.value)}
+                        inputMode="decimal"
+                        className="h-12 rounded-xl"
+                      />
 
-  <Button
-    type="button"
-    variant="secondary"
-    className="h-12 w-full rounded-xl"
-    onClick={placeMaxBid}
-    disabled={maxBidLoading || status.ended || isOwner}
-  >
-    {maxBidLoading ? "Beállítás..." : "Maximum licit beállítása"}
-  </Button>
-</div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-12 w-full rounded-xl"
+                        onClick={placeMaxBid}
+                        disabled={maxBidLoading || status.ended || isOwner}
+                      >
+                        {maxBidLoading ? "Beállítás..." : "Maximum licit beállítása"}
+                      </Button>
+                    </div>
 
                     {listing.buy_now_price && !status.ended && !isOwner && (
                       <AlertDialog>
@@ -1179,8 +1562,8 @@ toast.success("Licit sikeres ✅");
                           <AlertDialogFooter>
                             <AlertDialogCancel>Nem</AlertDialogCancel>
                             <AlertDialogAction onClick={buyNow} disabled={buyNowLoading}>
-  {buyNowLoading ? "Folyamatban..." : "Igen, megveszem"}
-</AlertDialogAction>
+                              {buyNowLoading ? "Folyamatban..." : "Igen, megveszem"}
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
