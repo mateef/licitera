@@ -235,7 +235,7 @@ export function SiteHeader() {
               onChange={(e) => setSearch(e.target.value)}
             />
             <Button type="submit" className="h-11 shrink-0 rounded-full px-4 sm:px-6">
-              Keresés
+              🔎 Keresés
             </Button>
           </form>
 
@@ -284,7 +284,7 @@ export function SiteHeader() {
             className="h-11 shrink-0 rounded-full px-4 sm:px-6"
             onClick={() => router.push("/create-listing")}
           >
-            <span className="hidden sm:inline">Új aukció</span>
+            <span className="hidden sm:inline">+ Új aukció</span>
             <span className="sm:hidden">Eladás</span>
           </Button>
         </div>
