@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Star } from "lucide-react";
+import { Star, UserRound, Phone } from "lucide-react";
 
 type ProfileRow = {
   id: string;
@@ -16,8 +16,6 @@ type ProfileRow = {
   email: string | null;
   phone: string | null;
   phone_verified: boolean | null;
-  public_display_name: string | null;
-  bio: string | null;
   profile_image_url: string | null;
 };
 
@@ -42,14 +40,6 @@ type ReviewRow = {
   listings?: { title: string | null }[] | null;
 };
 
-function toPublicName(fullName: string | null | undefined) {
-  if (!fullName) return "Ismeretlen felhasználó";
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "Ismeretlen felhasználó";
-  if (parts.length === 1) return parts[0];
-  return `${parts[parts.length - 1]} ${parts[0].charAt(0).toUpperCase()}.`;
-}
-
 export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,9 +49,6 @@ export default function ProfilePage() {
   const [verifyingSms, setVerifyingSms] = useState(false);
 
   const [fullName, setFullName] = useState("");
-  const [publicDisplayName, setPublicDisplayName] = useState("");
-  const [bio, setBio] = useState("");
-  const [profileImageUrl, setProfileImageUrl] = useState("");
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -74,9 +61,18 @@ export default function ProfilePage() {
   const [myReviews, setMyReviews] = useState<ReviewRow[]>([]);
   const [receivedReviews, setReceivedReviews] = useState<ReviewRow[]>([]);
   const [reviewerNames, setReviewerNames] = useState<Record<string, string>>({});
+  const [otherPartyNames, setOtherPartyNames] = useState<Record<string, string>>({});
 
   const [reviewRatings, setReviewRatings] = useState<Record<string, string>>({});
   const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
+
+  function toPublicName(fullNameValue: string | null | undefined) {
+    if (!fullNameValue) return "Ismeretlen felhasználó";
+    const parts = fullNameValue.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "Ismeretlen felhasználó";
+    if (parts.length === 1) return parts[0];
+    return `${parts[parts.length - 1]} ${parts[0].charAt(0).toUpperCase()}.`;
+  }
 
   function isLikelyHungarianPhone(value: string) {
     const raw = value
@@ -85,6 +81,11 @@ export default function ProfilePage() {
       .replace(/\(/g, "")
       .replace(/\)/g, "");
     return /^\+36\d{9}$/.test(raw) || /^06\d{9}$/.test(raw) || /^36\d{9}$/.test(raw);
+  }
+
+  function formatHufAmount(value: number | null | undefined) {
+    if (value === null || value === undefined) return "-";
+    return new Intl.NumberFormat("hu-HU").format(value) + " Ft";
   }
 
   async function loadProfile() {
@@ -104,9 +105,7 @@ export default function ProfilePage() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select(
-        "id,full_name,email,phone,phone_verified,public_display_name,bio,profile_image_url"
-      )
+      .select("id,full_name,email,phone,phone_verified,profile_image_url")
       .eq("id", uid)
       .maybeSingle();
 
@@ -119,9 +118,6 @@ export default function ProfilePage() {
     const profile = data as ProfileRow | null;
 
     setFullName(profile?.full_name ?? "");
-    setPublicDisplayName(profile?.public_display_name ?? "");
-    setBio(profile?.bio ?? "");
-    setProfileImageUrl(profile?.profile_image_url ?? "");
     setEmail(profile?.email ?? sessionData.session?.user?.email ?? "");
     setPhone(profile?.phone ?? "");
     setPhoneVerified(!!profile?.phone_verified);
@@ -138,12 +134,11 @@ export default function ProfilePage() {
       .not("closed_at", "is", null)
       .order("closed_at", { ascending: false });
 
-    if (error) {
-      return;
-    }
+    if (error) return;
 
     const rows = (data ?? []) as ReviewCandidate[];
     const allowed: ReviewCandidate[] = [];
+    const relatedUserIds: string[] = [];
 
     for (const row of rows) {
       const otherUserId = row.user_id === uid ? row.winner_user_id : row.user_id;
@@ -156,10 +151,26 @@ export default function ProfilePage() {
 
       if (canReview) {
         allowed.push(row);
+        relatedUserIds.push(otherUserId);
       }
     }
 
     setPendingReviews(allowed);
+
+    if (relatedUserIds.length > 0) {
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id,full_name")
+        .in("id", Array.from(new Set(relatedUserIds)));
+
+      const nextNames: Record<string, string> = {};
+      (profileRows ?? []).forEach((item: any) => {
+        nextNames[item.id] = toPublicName(item.full_name);
+      });
+      setOtherPartyNames(nextNames);
+    } else {
+      setOtherPartyNames({});
+    }
   }
 
   async function loadReviews(uid: string) {
@@ -187,12 +198,12 @@ export default function ProfilePage() {
     if (reviewerIds.length > 0) {
       const { data: profileRows } = await supabase
         .from("profiles")
-        .select("id,full_name,public_display_name")
+        .select("id,full_name")
         .in("id", reviewerIds);
 
       const nextNames: Record<string, string> = {};
       (profileRows ?? []).forEach((item: any) => {
-        nextNames[item.id] = item.public_display_name || toPublicName(item.full_name);
+        nextNames[item.id] = toPublicName(item.full_name);
       });
       setReviewerNames(nextNames);
     } else {
@@ -268,9 +279,6 @@ export default function ProfilePage() {
         .from("profiles")
         .update({
           full_name: fullName.trim(),
-          public_display_name: publicDisplayName.trim() || null,
-          bio: bio.trim() || null,
-          profile_image_url: profileImageUrl.trim() || null,
           email: email.trim().toLowerCase(),
           phone: phone.trim(),
           phone_verified: phoneChanged ? false : phoneVerified,
@@ -431,7 +439,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-5xl space-y-4">
         <div className="h-10 w-48 rounded bg-muted" />
         <div className="h-64 rounded bg-muted" />
       </div>
@@ -458,12 +466,14 @@ export default function ProfilePage() {
     );
   }
 
+  const generatedPublicName = toPublicName(fullName);
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Profilom</h1>
         <p className="text-sm text-muted-foreground">
-          Itt tudod kezelni a fiókod alapadatait és az értékeléseidet.
+          Itt tudod kezelni a fiókod adatait és az értékeléseidet.
         </p>
       </div>
 
@@ -472,7 +482,7 @@ export default function ProfilePage() {
           <CardTitle>Fiókadatok</CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">Teljes név</label>
@@ -485,12 +495,10 @@ export default function ProfilePage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Nyilvános név</label>
-              <Input
-                placeholder="pl. Péter K."
-                value={publicDisplayName}
-                onChange={(e) => setPublicDisplayName(e.target.value)}
-              />
+              <label className="text-sm font-medium">Nyilvánosan megjelenő név</label>
+              <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">
+                {generatedPublicName || "Automatikusan generálva a nevedből"}
+              </div>
             </div>
           </div>
 
@@ -516,27 +524,11 @@ export default function ProfilePage() {
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Profilkép URL</label>
-            <Input
-              placeholder="https://..."
-              value={profileImageUrl}
-              onChange={(e) => setProfileImageUrl(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Bemutatkozás</label>
-            <Textarea
-              placeholder="Pár szó magadról, az eladásaidról, átvételről..."
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              className="min-h-[120px]"
-            />
-          </div>
-
           <div className="rounded-xl border bg-background/60 p-4 text-sm">
-            <div className="font-medium">Telefonszám hitelesítése</div>
+            <div className="flex items-center gap-2 font-medium">
+              <Phone className="h-4 w-4" />
+              Telefonszám hitelesítése
+            </div>
 
             <div className="mt-2 text-muted-foreground">
               Állapot:{" "}
@@ -607,59 +599,77 @@ export default function ProfilePage() {
               Jelenleg nincs leadható értékelésed.
             </div>
           ) : (
-            pendingReviews.map((row) => (
-              <div key={row.id} className="rounded-2xl border p-4 space-y-3">
-                <div className="flex items-start gap-4">
-                  {row.image_urls?.[0] ? (
-                    <img
-                      src={row.image_urls[0]}
-                      alt={row.title}
-                      className="h-20 w-20 rounded-xl object-cover"
-                    />
-                  ) : (
-                    <div className="h-20 w-20 rounded-xl bg-muted" />
-                  )}
+            <div className="grid gap-4">
+              {pendingReviews.map((row) => {
+                const otherUserId = row.user_id === userId ? row.winner_user_id : row.user_id;
+                const otherName = otherUserId ? otherPartyNames[otherUserId] || "Ismeretlen felhasználó" : "Ismeretlen felhasználó";
 
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold">{row.title}</div>
-                    <div className="mt-1 text-sm text-muted-foreground">
-                      Lezárva: {row.closed_at ? new Date(row.closed_at).toLocaleString() : "-"}
+                return (
+                  <div key={row.id} className="rounded-[1.5rem] border p-4 shadow-sm">
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                      {row.image_urls?.[0] ? (
+                        <img
+                          src={row.image_urls[0]}
+                          alt={row.title}
+                          className="h-28 w-full rounded-2xl object-cover sm:w-28"
+                        />
+                      ) : (
+                        <div className="h-28 w-full rounded-2xl bg-muted sm:w-28" />
+                      )}
+
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-semibold text-slate-900">{row.title}</div>
+                          <Badge variant="secondary" className="inline-flex items-center gap-1">
+                            <UserRound className="h-3.5 w-3.5" />
+                            {otherName}
+                          </Badge>
+                        </div>
+
+                        <div className="text-sm text-muted-foreground">
+                          Lezárva: {row.closed_at ? new Date(row.closed_at).toLocaleString() : "-"}
+                        </div>
+
+                        <div className="text-sm text-muted-foreground">
+                          Végső ár: {formatHufAmount(row.final_price)}
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-muted-foreground">
-                      Végső ár: {row.final_price ? `${new Intl.NumberFormat("hu-HU").format(row.final_price)} Ft` : "-"}
+
+                    <div className="mt-4 space-y-3">
+                      <select
+                        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                        value={reviewRatings[row.id] ?? ""}
+                        onChange={(e) =>
+                          setReviewRatings((prev) => ({ ...prev, [row.id]: e.target.value }))
+                        }
+                      >
+                        <option value="">Adj értékelést</option>
+                        <option value="5">5 - Kiváló</option>
+                        <option value="4">4 - Jó</option>
+                        <option value="3">3 - Rendben</option>
+                        <option value="2">2 - Gyenge</option>
+                        <option value="1">1 - Rossz</option>
+                      </select>
+
+                      <Textarea
+                        placeholder="Írj rövid véleményt..."
+                        value={reviewComments[row.id] ?? ""}
+                        onChange={(e) =>
+                          setReviewComments((prev) => ({
+                            ...prev,
+                            [row.id]: e.target.value,
+                          }))
+                        }
+                        className="min-h-[110px]"
+                      />
+
+                      <Button onClick={() => submitReview(row)}>Értékelés elküldése</Button>
                     </div>
                   </div>
-                </div>
-
-                <select
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
-                  value={reviewRatings[row.id] ?? ""}
-                  onChange={(e) =>
-                    setReviewRatings((prev) => ({ ...prev, [row.id]: e.target.value }))
-                  }
-                >
-                  <option value="">Adj értékelést</option>
-                  <option value="5">5 - Kiváló</option>
-                  <option value="4">4 - Jó</option>
-                  <option value="3">3 - Rendben</option>
-                  <option value="2">2 - Gyenge</option>
-                  <option value="1">1 - Rossz</option>
-                </select>
-
-                <Textarea
-                  placeholder="Írj rövid véleményt..."
-                  value={reviewComments[row.id] ?? ""}
-                  onChange={(e) =>
-                    setReviewComments((prev) => ({
-                      ...prev,
-                      [row.id]: e.target.value,
-                    }))
-                  }
-                />
-
-                <Button onClick={() => submitReview(row)}>Értékelés elküldése</Button>
-              </div>
-            ))
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
