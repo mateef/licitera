@@ -37,6 +37,7 @@ export function SiteHeader() {
   const [mounted, setMounted] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [mainCategories, setMainCategories] = useState<CategoryRow[]>([]);
+  const [balance, setBalance] = useState<number | null>(null);
 
   if (pathname === "/") {
     return null;
@@ -49,24 +50,36 @@ export function SiteHeader() {
   function getHungarianFirstName(fullName: string | null | undefined) {
     if (!fullName) return "";
     const parts = fullName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "";
     return parts[parts.length - 1] || "";
   }
 
   async function loadMainCategories() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("categories")
       .select("id,name,parent_id,sort_order")
       .is("parent_id", null)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
-    if (error) {
-      setMainCategories([]);
+    setMainCategories((data ?? []) as CategoryRow[]);
+  }
+
+  async function loadBalance(userId: string | null) {
+    if (!userId) {
+      setBalance(null);
       return;
     }
 
-    setMainCategories((data ?? []) as CategoryRow[]);
+    const { data } = await supabase
+      .from("billing_user_balances")
+      .select("balance_amount")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const raw = (data as any)?.balance_amount ?? 0;
+
+    // 💡 NEM engedjük +ba
+    setBalance(Math.min(0, raw));
   }
 
   async function loadSessionAndProfile() {
@@ -80,7 +93,7 @@ export function SiteHeader() {
 
     if (!userId) {
       setDisplayName("");
-      if (!userEmail) setIsAdmin(false);
+      setBalance(null);
       return;
     }
 
@@ -92,6 +105,8 @@ export function SiteHeader() {
 
     const profileRow = profile as ProfileRow | null;
     setDisplayName(getHungarianFirstName(profileRow?.full_name));
+
+    await loadBalance(userId);
   }
 
   useEffect(() => {
@@ -110,11 +125,8 @@ export function SiteHeader() {
     const q = search.trim();
     const params = new URLSearchParams(searchParams.toString());
 
-    if (q) {
-      params.set("q", q);
-    } else {
-      params.delete("q");
-    }
+    if (q) params.set("q", q);
+    else params.delete("q");
 
     router.push(`/listings?${params.toString()}`);
   }
@@ -127,12 +139,13 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/90 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b bg-white/70 backdrop-blur-xl">
+      {/* TOP BAR */}
       <div className="mx-auto flex h-9 max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
+        <div>
           {sessionUserId ? (
             <span className="text-foreground">
-              Üdvözöllek{displayName ? `, ${displayName}!` : "!"}
+              Üdv{displayName ? `, ${displayName}` : ""}!
             </span>
           ) : (
             <a className="hover:underline" href="/login">
@@ -141,47 +154,57 @@ export function SiteHeader() {
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {sessionUserId && balance !== null && (
+            <button
+              onClick={() => router.push("/billing")}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                balance < 0
+                  ? "bg-red-100 text-red-700 hover:bg-red-200"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              {balance < 0 ? "⚠ " : ""}
+              {new Intl.NumberFormat("hu-HU").format(balance)} Ft
+            </button>
+          )}
+
           {sessionUserId ? (
-            <>
-              {isAdmin ? (
-                <a className="hover:underline" href="/admin">
-                  Admin felület
-                </a>
-              ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="text-xs hover:text-foreground">
+                  Profil ▼
+                </button>
+              </DropdownMenuTrigger>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Profil ▼
-                  </button>
-                </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {isAdmin && (
+                  <DropdownMenuItem onClick={() => router.push("/admin")}>
+                    Admin felület
+                  </DropdownMenuItem>
+                )}
 
-                <DropdownMenuContent align="end">
-                  {isAdmin ? (
-                    <DropdownMenuItem onClick={() => router.push("/admin")}>
-                      Admin felület
-                    </DropdownMenuItem>
-                  ) : null}
+                <DropdownMenuItem onClick={() => router.push("/profile")}>
+                  Profil
+                </DropdownMenuItem>
 
-                  <DropdownMenuItem onClick={() => router.push("/profile")}>
-                    Profil
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/my-listings")}>
-                    Saját aukciók
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/watchlist")}>
-                    Figyelőlista
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    Kijelentkezés
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+                <DropdownMenuItem onClick={() => router.push("/billing")}>
+                  Egyenleg & előfizetés
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => router.push("/my-listings")}>
+                  Saját aukciók
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => router.push("/watchlist")}>
+                  Figyelőlista
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={handleSignOut}>
+                  Kijelentkezés
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
             <>
               <a className="hover:underline" href="/my-listings">
@@ -190,9 +213,6 @@ export function SiteHeader() {
               <a className="hover:underline" href="/create-listing">
                 Eladás
               </a>
-              <a className="hover:underline" href="/watchlist">
-                Figyelőlista
-              </a>
             </>
           )}
         </div>
@@ -200,29 +220,26 @@ export function SiteHeader() {
 
       <Separator />
 
+      {/* MAIN HEADER */}
       <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-3 px-4 py-2">
         <button
-          type="button"
-          onClick={() => {
-            router.push("/listings");
-            router.refresh();
-          }}
-          className="shrink-0 text-2xl font-bold tracking-tight"
+          onClick={() => router.push("/listings")}
+          className="text-2xl font-extrabold tracking-tight"
         >
-          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-pink-600 bg-clip-text text-transparent">
             Licitera
           </span>
         </button>
 
-        <div className="hidden text-xs leading-4 text-muted-foreground md:block">
+        <div className="hidden text-xs text-muted-foreground md:block">
           Aukciók
           <br />
           licitre
         </div>
 
-        <div className="ml-2 flex min-w-0 flex-1 items-center gap-2">
+        <div className="ml-2 flex flex-1 items-center gap-2">
           <form
-            className="flex min-w-0 flex-1 items-center gap-2"
+            className="flex flex-1 items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               goSearch();
@@ -230,16 +247,16 @@ export function SiteHeader() {
           >
             <Input
               placeholder="Keress aukciót..."
-              className="h-11 min-w-0 rounded-full"
+              className="h-11 rounded-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <Button type="submit" className="h-11 shrink-0 rounded-full px-4 sm:px-6">
-              🔎 Keresés
+            <Button type="submit" className="h-11 rounded-full px-4">
+              🔎
             </Button>
           </form>
 
-          {mounted ? (
+          {mounted && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="hidden h-11 rounded-full md:inline-flex">
@@ -252,40 +269,25 @@ export function SiteHeader() {
                   Összes kategória
                 </DropdownMenuItem>
 
-                {mainCategories.map((category) => (
+                {mainCategories.map((c) => (
                   <DropdownMenuItem
-                    key={category.id}
-                    onClick={() => router.push(`/listings?category=${category.id}`)}
+                    key={c.id}
+                    onClick={() => router.push(`/listings?category=${c.id}`)}
                   >
-                    {category.name}
+                    {c.name}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : (
-            <Button variant="outline" className="hidden h-11 rounded-full md:inline-flex" disabled>
-              Kategóriák
-            </Button>
           )}
-
-          {isAdmin ? (
-            <Button
-              variant="outline"
-              className="hidden h-11 rounded-full lg:inline-flex"
-              onClick={() => router.push("/admin")}
-            >
-              Admin felület
-            </Button>
-          ) : null}
 
           <NotificationsBell />
 
           <Button
-            className="h-11 shrink-0 rounded-full px-4 sm:px-6"
+            className="h-11 rounded-full px-4"
             onClick={() => router.push("/create-listing")}
           >
-            <span className="hidden sm:inline">+ Új aukció</span>
-            <span className="sm:hidden">Eladás</span>
+            + Aukció
           </Button>
         </div>
       </div>

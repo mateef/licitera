@@ -143,6 +143,10 @@ export default function ProfilePage() {
   const [reviewRatings, setReviewRatings] = useState<Record<string, string>>({});
   const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
 
+  const [monthlyFreeQuota, setMonthlyFreeQuota] = useState(0);
+  const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
+  const [usedSuccessfulSales, setUsedSuccessfulSales] = useState(0);
+
   function toPublicName(fullNameValue: string | null | undefined) {
     if (!fullNameValue) return "Ismeretlen felhasználó";
     const parts = fullNameValue.trim().split(/\s+/).filter(Boolean);
@@ -345,7 +349,15 @@ export default function ProfilePage() {
       .eq("user_id", uid)
       .order("created_at", { ascending: false })
       .limit(8);
+      const { data: quotaRow } = await supabase
+    .from("billing_monthly_quota_usage")
+    .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
+    .eq("user_id", uid)
+    .maybeSingle();
 
+  setMonthlyFreeQuota((quotaRow as any)?.monthly_free_quota ?? 0);
+  setRemainingFreeQuota((quotaRow as any)?.remaining_free_quota ?? 0);
+  setUsedSuccessfulSales((quotaRow as any)?.used_successful_sales ?? 0);
     setRecentBillingEntries((ledgerRows ?? []) as BillingEntryRow[]);
   }
 
@@ -804,14 +816,24 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Sikeres eladások ebben a hónapban</span>
-                  <span className="font-semibold">{currentMonthSuccessfulSales} db</span>
-                </div>
+  <span className="text-muted-foreground">Sikeres eladások ebben a hónapban</span>
+  <span className="font-semibold">{usedSuccessfulSales} db</span>
+</div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Ebben a hónapban felszámított díj</span>
-                  <span className="font-semibold">{formatHufAmount(currentMonthFeeTotal)}</span>
-                </div>
+<div className="flex items-center justify-between">
+  <span className="text-muted-foreground">Havi díjmentes kvóta</span>
+  <span className="font-semibold">{monthlyFreeQuota} db</span>
+</div>
+
+<div className="flex items-center justify-between">
+  <span className="text-muted-foreground">Hátralévő díjmentes kvóta</span>
+  <span className="font-semibold">{remainingFreeQuota} db</span>
+</div>
+
+<div className="flex items-center justify-between">
+  <span className="text-muted-foreground">Ebben a hónapban felszámított díj</span>
+  <span className="font-semibold">{formatHufAmount(currentMonthFeeTotal)}</span>
+</div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Jelenlegi egyenleg</span>

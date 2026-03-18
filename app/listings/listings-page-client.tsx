@@ -29,6 +29,9 @@ type Listing = {
   delivery_mode: string;
   buy_now_price: number | null;
   category_id?: string | null;
+  seller_rating?: number | null;
+  seller_review_count?: number | null;
+  is_featured?: boolean;
 };
 
 type Category = {
@@ -41,6 +44,17 @@ type Category = {
 type SettlementItem = {
   city: string;
   county: string;
+};
+
+type SellerPlanRow = {
+  id: string;
+  subscription_tier?: "free" | "standard" | "pro" | null;
+};
+
+type RatingSummaryRow = {
+  user_id: string;
+  average_rating: number | null;
+  review_count: number | null;
 };
 
 const settlementItems = settlements as SettlementItem[];
@@ -340,6 +354,7 @@ export default function ListingsPage() {
         .select(
           `
           id,title,description,current_price,ends_at,image_urls,
+          user_id,is_active,
           min_increment,county,city,delivery_mode,buy_now_price,category_id,
           categories(id,name),
           bids(count)
@@ -366,7 +381,7 @@ export default function ListingsPage() {
       if (sort === "price_asc") query = query.order("current_price", { ascending: true });
       if (sort === "new") query = query.order("created_at", { ascending: false });
 
-      const { data, error, count } = await query;
+      const { data, error } = await query;
 
       if (reqId !== listingsReqIdRef.current) return;
 
@@ -377,17 +392,66 @@ export default function ListingsPage() {
         return;
       }
 
-      let formatted =
+      let formatted: Listing[] =
         data?.map((l: any) => ({
           ...l,
           bid_count: l.bids?.[0]?.count ?? 0,
+          seller_rating: null,
+          seller_review_count: 0,
+          is_featured: false,
         })) ?? [];
 
       if (selectedCategoryIds.length > 0) {
         formatted = formatted.filter(
-          (l: any) => l.category_id && selectedCategoryIds.includes(l.category_id)
+          (l: Listing) => l.category_id && selectedCategoryIds.includes(l.category_id)
         );
       }
+
+      const sellerIds = Array.from(
+        new Set(formatted.map((l) => l.user_id).filter(Boolean))
+      ) as string[];
+
+      let sellerPlanMap: Record<string, "free" | "standard" | "pro" | null> = {};
+      let sellerRatingMap: Record<
+        string,
+        { average_rating: number | null; review_count: number | null }
+      > = {};
+
+      if (sellerIds.length > 0) {
+        const [{ data: sellerPlans }, { data: ratingRows }] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id,subscription_tier")
+            .in("id", sellerIds),
+          supabase
+            .from("user_rating_summary")
+            .select("user_id,average_rating,review_count")
+            .in("user_id", sellerIds),
+        ]);
+
+        (sellerPlans ?? []).forEach((row: SellerPlanRow) => {
+          sellerPlanMap[row.id] = row.subscription_tier ?? null;
+        });
+
+        (ratingRows ?? []).forEach((row: RatingSummaryRow) => {
+          sellerRatingMap[row.user_id] = {
+            average_rating: row.average_rating,
+            review_count: row.review_count,
+          };
+        });
+      }
+
+      formatted = formatted.map((l) => {
+        const rating = l.user_id ? sellerRatingMap[l.user_id] : null;
+        const tier = l.user_id ? sellerPlanMap[l.user_id] : null;
+
+        return {
+          ...l,
+          seller_rating: rating?.average_rating ?? null,
+          seller_review_count: rating?.review_count ?? 0,
+          is_featured: tier === "pro",
+        };
+      });
 
       const start = (page - 1) * PAGE_SIZE;
       const end = start + PAGE_SIZE;
@@ -825,7 +889,12 @@ export default function ListingsPage() {
                 return (
                   <Card
                     key={l.id}
-                    className="group overflow-hidden rounded-[1.75rem] border-slate-200/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.12)]"
+                    className={`group overflow-hidden rounded-[1.75rem] border transition duration-300 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.12)]
+                      ${
+                        l.is_featured
+                          ? "border-amber-300 bg-gradient-to-br from-white to-amber-50 shadow-[0_0_0_2px_rgba(251,191,36,0.25),0_18px_40px_rgba(15,23,42,0.08)]"
+                          : "border-slate-200/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.06)]"
+                      }`}
                   >
                     <div className="relative">
                       <a href={`/listing/${l.id}`} className="block overflow-hidden">
@@ -843,11 +912,18 @@ export default function ListingsPage() {
                       </a>
 
                       <div className="absolute left-3 top-3 flex gap-2">
+                        {l.is_featured && (
+                          <Badge className="rounded-full bg-amber-400 px-3 py-1 font-semibold text-black hover:bg-amber-400">
+                            KIEMELT
+                          </Badge>
+                        )}
+
                         {l.categories?.name && (
                           <Badge className="rounded-full border-white/20 bg-black/45 px-3 py-1 text-white backdrop-blur">
                             {l.categories.name}
                           </Badge>
                         )}
+
                         {endingSoon && (
                           <Badge variant="destructive" className="rounded-full px-3 py-1">
                             Hamarosan lejár
@@ -884,6 +960,12 @@ export default function ListingsPage() {
                           <span className="rounded-full bg-slate-100 px-2.5 py-1">
                             {getDeliveryModeLabel(l.delivery_mode)}
                           </span>
+
+                          {l.seller_rating !== null && l.seller_rating !== undefined ? (
+                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">
+                              ⭐ {l.seller_rating.toFixed(1)} ({l.seller_review_count ?? 0})
+                            </span>
+                          ) : null}
                         </div>
                       </div>
 
