@@ -51,19 +51,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: balanceError.message }, { status: 500 });
     }
 
-    const balanceAmount = Number((balanceRow as any)?.balance_amount ?? 0);
+    const rawBalance = Number((balanceRow as any)?.balance_amount ?? 0);
 
-    if (balanceAmount >= 0) {
+    console.log("BALANCE TOPUP DEBUG", {
+      userId: user.id,
+      rawBalance,
+      balanceRow,
+    });
+
+    if (!Number.isFinite(rawBalance)) {
+      return NextResponse.json(
+        { error: "Érvénytelen egyenleg érték az adatbázisban." },
+        { status: 400 }
+      );
+    }
+
+    if (rawBalance >= 0) {
       return NextResponse.json(
         { error: "Nincs rendezendő negatív egyenleg." },
         { status: 400 }
       );
     }
 
-    const amountToPay = Math.abs(balanceAmount);
+    const amountToPay = Math.round(Math.abs(rawBalance));
+
+    console.log("BALANCE TOPUP AMOUNT", {
+      rawBalance,
+      amountToPay,
+    });
+
+    if (amountToPay < 175) {
+      return NextResponse.json(
+        {
+          error: `A Stripe minimum összeg HUF esetén 175 Ft. A számolt összeg most: ${amountToPay} Ft. Valószínűleg a billing_user_balances.balance_amount mezőben nem -2000, hanem kisebb érték van.`,
+        },
+        { status: 400 }
+      );
+    }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL!;
-
+        console.log("BALANCE TOPUP CREATE SESSION INPUT", {
+      customerEmail: (profile as any)?.email ?? user.email ?? undefined,
+      amountToPay,
+      baseUrl,
+    });
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: (profile as any)?.email ?? user.email ?? undefined,
@@ -90,9 +121,16 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (error: any) {
+    } catch (error: any) {
+    console.error("STRIPE BALANCE TOPUP ERROR:", error);
+    console.error("STRIPE BALANCE TOPUP ERROR RAW:", error?.raw);
+    console.error("STRIPE BALANCE TOPUP ERROR MESSAGE:", error?.message);
+
     return NextResponse.json(
-      { error: error?.message ?? "Ismeretlen hiba történt." },
+      {
+        error: error?.message ?? "Ismeretlen hiba történt.",
+        details: error?.raw ?? null,
+      },
       { status: 500 }
     );
   }
