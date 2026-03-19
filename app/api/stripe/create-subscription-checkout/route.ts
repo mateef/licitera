@@ -1,37 +1,48 @@
-import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import { NextRequest, NextResponse } from "next/server";
+import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const tier = body?.tier as "standard" | "pro" | undefined;
+    const authHeader = req.headers.get("authorization");
 
-    if (!tier || !["standard", "pro"].includes(tier)) {
-      return NextResponse.json({ error: "Érvénytelen csomag." }, { status: 400 });
-    }
-
-    const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Hiányzó auth token." }, { status: 401 });
+      return NextResponse.json({ error: "Hiányzó auth header." }, { status: 401 });
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    const accessToken = authHeader.replace("Bearer ", "");
+
+    const supabaseUser = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      }
+    );
 
     const {
       data: { user },
       error: userError,
-    } = await supabaseAdmin.auth.getUser(token);
+    } = await supabaseUser.auth.getUser();
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Nem sikerült azonosítani a felhasználót." }, { status: 401 });
+      return NextResponse.json({ error: "Érvénytelen felhasználó." }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const tier = body?.tier as "standard" | "pro";
+
+    if (!tier || !["standard", "pro"].includes(tier)) {
+      return NextResponse.json({ error: "Érvénytelen csomag." }, { status: 400 });
     }
 
     const priceId =
@@ -40,7 +51,7 @@ export async function POST(req: Request) {
         : process.env.STRIPE_PRO_PRICE_ID;
 
     if (!priceId) {
-      return NextResponse.json({ error: "Hiányzó Stripe price ID." }, { status: 500 });
+      return NextResponse.json({ error: "Hiányzik a Stripe price ID." }, { status: 500 });
     }
 
     const { data: profile } = await supabaseAdmin
@@ -49,14 +60,18 @@ export async function POST(req: Request) {
       .eq("id", user.id)
       .maybeSingle();
 
-    let stripeCustomerId = (profile as any)?.stripe_customer_id ?? null;
+    if (!profile) {
+      return NextResponse.json({ error: "A profil nem található." }, { status: 404 });
+    }
+
+    let stripeCustomerId = (profile as any).stripe_customer_id as string | null;
 
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
-        email: user.email ?? (profile as any)?.email ?? undefined,
-        name: (profile as any)?.full_name ?? undefined,
+        email: (profile as any).email || user.email || undefined,
+        name: (profile as any).full_name || undefined,
         metadata: {
-          supabase_user_id: user.id,
+          user_id: user.id,
         },
       });
 
@@ -64,13 +79,9 @@ export async function POST(req: Request) {
 
       await supabaseAdmin
         .from("profiles")
-        .update({
-          stripe_customer_id: stripeCustomerId,
-        })
+        .update({ stripe_customer_id: stripeCustomerId })
         .eq("id", user.id);
     }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -81,25 +92,18 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      allow_promotion_codes: true,
-      success_url: `${appUrl}/profile?stripe=subscription_success`,
-      cancel_url: `${appUrl}/profile?stripe=subscription_cancel`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/profile?stripe=success`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/profile?stripe=cancel`,
       metadata: {
-        supabase_user_id: user.id,
-        selected_tier: tier,
-      },
-      subscription_data: {
-        metadata: {
-          supabase_user_id: user.id,
-          selected_tier: tier,
-        },
+        user_id: user.id,
+        subscription_tier: tier,
       },
     });
 
     return NextResponse.json({ url: session.url });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error?.message ?? "Ismeretlen hiba történt." },
+      { error: error?.message || "Nem sikerült létrehozni a checkout sessiont." },
       { status: 500 }
     );
   }

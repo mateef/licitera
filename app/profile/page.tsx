@@ -477,9 +477,22 @@ setLoading(false);
   setSubscriptionLoading(true);
 
   try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+      return;
+    }
+
     const res = await fetch("/api/stripe/subscription-status", {
       method: "GET",
       cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     });
 
     const data = await res.json().catch(() => null);
@@ -635,10 +648,22 @@ setLoading(false);
   setChangingPlan(tier);
 
   try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+      return;
+    }
+
     const res = await fetch("/api/stripe/create-subscription-checkout", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ tier }),
     });
@@ -665,10 +690,22 @@ setLoading(false);
   setStripeCustomerPortalUrlLoading(true);
 
   try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+      return;
+    }
+
     const res = await fetch("/api/stripe/customer-portal", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 
@@ -689,7 +726,6 @@ setLoading(false);
     setStripeCustomerPortalUrlLoading(false);
   }
 }
-
   useEffect(() => {
     loadAllProfileData();
 
