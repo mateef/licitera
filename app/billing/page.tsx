@@ -45,7 +45,7 @@ const SUBSCRIPTION_PLANS: {
   {
     key: "pro",
     name: "Pro",
-    priceLabel: "3000 Ft / hó",
+    priceLabel: "2990 Ft / hó",
     badge: "Kiemelt",
     description:
       "Aktív eladóknak. Automatikus kiemelés és havi 20 aukcióig nincs extra tranzakciós költség.",
@@ -64,6 +64,7 @@ export default function BillingPage() {
 
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
   const [subscriptionStatus, setSubscriptionStatus] = useState("active");
+  const [changingPlan, setChangingPlan] = useState<SubscriptionTier | null>(null);
 
   const [monthlyFreeQuota, setMonthlyFreeQuota] = useState(0);
   const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
@@ -143,12 +144,59 @@ export default function BillingPage() {
     }
   }
 
+  async function changeSubscription(tier: SubscriptionTier) {
+    if (tier === "free") {
+      toast.info("Az ingyenes csomag az alapértelmezett.");
+      return;
+    }
+
+    setChangingPlan(tier);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/create-subscription-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ tier }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Hiányzik a Stripe checkout URL.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setChangingPlan(null);
+    }
+  }
+
   const currentPlan = useMemo(() => {
     return SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0];
   }, [subscriptionTier]);
 
   const currentMonthlyFee =
-    subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 3000 : 0;
+    subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 2990 : 0;
 
   const transactionRule =
     subscriptionTier === "free"
@@ -313,8 +361,16 @@ export default function BillingPage() {
                         Aktív csomag
                       </Button>
                     ) : (
-                      <Button className="w-full" variant="outline" disabled>
-                        Hamarosan elérhető
+                      <Button
+                        className="w-full"
+                        onClick={() => changeSubscription(plan.key)}
+                        disabled={changingPlan !== null}
+                      >
+                        {changingPlan === plan.key
+                          ? "Átirányítás..."
+                          : plan.key === "free"
+                          ? "Ingyenes csomag"
+                          : "Csomag kiválasztása"}
                       </Button>
                     )}
                   </div>
@@ -368,7 +424,7 @@ export default function BillingPage() {
             label: "Havi díj",
             free: "0 Ft",
             standard: "1490 Ft",
-            pro: "3000 Ft",
+            pro: "2990 Ft",
           },
         ].map((row) => (
           <div key={row.label} className="grid grid-cols-4 border-b last:border-b-0 text-sm">
@@ -387,7 +443,8 @@ export default function BillingPage() {
         </div>
         <p>
           Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Az
-          előfizetés és az egyenlegrendezés online fizetéssel később lesz bekötve.
+          előfizetés Stripe-on keresztül kezelhető, az egyenlegrendezés online fizetéssel később
+          lesz bekötve.
         </p>
       </div>
     </div>

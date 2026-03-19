@@ -10,6 +10,7 @@ export function middleware(req: NextRequest) {
   "/api/prelaunch-logout",
   "/api/waitlist",
   "/api/waitlist-count",
+  "/api/stripe/webhook",
   "/favicon.ico",
 ];
 
