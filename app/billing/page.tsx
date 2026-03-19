@@ -133,16 +133,47 @@ export default function BillingPage() {
   }, []);
 
   async function handleTopup() {
-    if (topupLoading) return;
+  if (topupLoading) return;
 
-    setTopupLoading(true);
+  setTopupLoading(true);
 
-    try {
-      toast.info("Stripe hamarosan jön 👀");
-    } finally {
-      setTopupLoading(false);
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+      return;
     }
+
+    const res = await fetch("/api/stripe/create-balance-topup-checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Nem sikerült elindítani az egyenlegrendezést.");
+      return;
+    }
+
+    if (!data?.url) {
+      toast.error("Hiányzik a Stripe checkout URL.");
+      return;
+    }
+
+    window.location.href = data.url;
+  } finally {
+    setTopupLoading(false);
   }
+}
 
   async function changeSubscription(tier: SubscriptionTier) {
     if (tier === "free") {
@@ -255,8 +286,8 @@ export default function BillingPage() {
             </Button>
 
             <div className="mt-3 text-xs text-muted-foreground">
-              Az online rendezés hamarosan Stripe fizetéssel lesz elérhető.
-            </div>
+  Az egyenlegrendezés Stripe-on keresztül történik. A fizetésről a számla emailben kerül kiküldésre.
+</div>
           </div>
 
           <div className="rounded-2xl border bg-white p-6">
