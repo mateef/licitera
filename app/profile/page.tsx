@@ -97,7 +97,7 @@ const SUBSCRIPTION_PLANS: {
   {
     key: "pro",
     name: "Pro",
-    priceLabel: "3000 Ft / hó",
+    priceLabel: "2990 Ft / hó",
     badge: "Kiemelt",
     description:
       "Aktív eladóknak. Automatikus kiemelés és havi 20 aukcióig nincs extra tranzakciós költség.",
@@ -147,6 +147,10 @@ export default function ProfilePage() {
   const [monthlyFreeQuota, setMonthlyFreeQuota] = useState(0);
   const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
   const [usedSuccessfulSales, setUsedSuccessfulSales] = useState(0);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionCancelLoading, setSubscriptionCancelLoading] = useState(false);
+  const [nextBillingDate, setNextBillingDate] = useState<string>("");
+  const [stripeCustomerPortalUrlLoading, setStripeCustomerPortalUrlLoading] = useState(false);
 
   function toPublicName(fullNameValue: string | null | undefined) {
     if (!fullNameValue) return "Ismeretlen felhasználó";
@@ -155,6 +159,17 @@ export default function ProfilePage() {
     if (parts.length === 1) return parts[0];
     return `${parts[parts.length - 1]} ${parts[0].charAt(0).toUpperCase()}.`;
   }
+
+  function formatDisplayDate(value: string | null | undefined) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("hu-HU", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
 
   function isLikelyHungarianPhone(value: string) {
     const raw = value
@@ -378,10 +393,11 @@ export default function ProfilePage() {
     }
 
     await loadProfile();
-    await loadPendingReviews(uid);
-    await loadReviews(uid);
-    await loadBillingData(uid);
-    setLoading(false);
+await loadPendingReviews(uid);
+await loadReviews(uid);
+await loadBillingData(uid);
+await loadStripeSubscriptionStatus(uid);
+setLoading(false);
   }
 
   async function saveProfile() {
@@ -454,6 +470,37 @@ export default function ProfilePage() {
       setSaving(false);
     }
   }
+
+  async function loadStripeSubscriptionStatus(uid: string) {
+  if (!uid) return;
+
+  setSubscriptionLoading(true);
+
+  try {
+    const res = await fetch("/api/stripe/subscription-status", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      return;
+    }
+
+    if (data?.subscriptionTier) {
+      setSubscriptionTier(data.subscriptionTier);
+    }
+
+    if (data?.subscriptionStatus) {
+      setSubscriptionStatus(data.subscriptionStatus);
+    }
+
+    setNextBillingDate(data?.currentPeriodEnd ?? "");
+  } finally {
+    setSubscriptionLoading(false);
+  }
+}
 
   async function sendVerificationSms() {
     setMsg("");
@@ -578,31 +625,70 @@ export default function ProfilePage() {
   }
 
   async function changeSubscription(tier: SubscriptionTier) {
-    if (!userId) return;
+  if (!userId) return;
 
-    setChangingPlan(tier);
-
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          subscription_tier: tier,
-          subscription_status: "active",
-        })
-        .eq("id", userId);
-
-      if (error) {
-        toast.error(error.message || "Nem sikerült módosítani az előfizetést.");
-        return;
-      }
-
-      setSubscriptionTier(tier);
-      setSubscriptionStatus("active");
-      toast.success("Előfizetés frissítve.");
-    } finally {
-      setChangingPlan(null);
-    }
+  if (tier === "free") {
+    toast.info("Az ingyenes csomagra váltást a lemondással kezeljük.");
+    return;
   }
+
+  setChangingPlan(tier);
+
+  try {
+    const res = await fetch("/api/stripe/create-subscription-checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tier }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
+      return;
+    }
+
+    if (!data?.url) {
+      toast.error("Hiányzik a Stripe checkout URL.");
+      return;
+    }
+
+    window.location.href = data.url;
+  } finally {
+    setChangingPlan(null);
+  }
+}
+
+  async function openCustomerPortal() {
+  setStripeCustomerPortalUrlLoading(true);
+
+  try {
+    const res = await fetch("/api/stripe/customer-portal", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Nem sikerült megnyitni az előfizetéskezelőt.");
+      return;
+    }
+
+    if (!data?.url) {
+      toast.error("Hiányzik a Customer Portal URL.");
+      return;
+    }
+
+    window.location.href = data.url;
+  } finally {
+    setStripeCustomerPortalUrlLoading(false);
+  }
+}
 
   useEffect(() => {
     loadAllProfileData();
@@ -621,7 +707,7 @@ export default function ProfilePage() {
   }, [subscriptionTier]);
 
   const currentMonthlyFee =
-    subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 3000 : 0;
+    subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 2990 : 0;
 
   const transactionRule =
     subscriptionTier === "free"
@@ -798,6 +884,20 @@ export default function ProfilePage() {
                   {subscriptionStatus === "active" ? "Aktív" : subscriptionStatus}
                 </Badge>
               </div>
+              {subscriptionTier !== "free" && nextBillingDate && (
+  <div className="mt-3 text-sm text-slate-600">
+    Következő terhelés:{" "}
+    <span className="font-medium text-slate-900">
+      {formatDisplayDate(nextBillingDate)}
+    </span>
+  </div>
+)}
+
+{subscriptionTier !== "free" && (
+  <div className="mt-2 text-xs text-slate-500">
+    Az előfizetés számlája automatikusan emailben kerül kiküldésre.
+  </div>
+)}
             </div>
 
             <div className="rounded-2xl border bg-slate-50 p-4">
@@ -970,25 +1070,38 @@ export default function ProfilePage() {
                     ))}
                   </div>
 
-                  <div className="mt-5">
-                    {isCurrent ? (
-                      <Button className="w-full" variant="secondary" disabled>
-                        Aktív csomag
-                      </Button>
-                    ) : (
-                      <Button
-                        className="w-full"
-                        onClick={() => changeSubscription(plan.key)}
-                        disabled={changingPlan !== null}
-                      >
-                        {changingPlan === plan.key
-                          ? "Mentés..."
-                          : plan.key === "free"
-                          ? "Váltás ingyenesre"
-                          : "Csomag kiválasztása"}
-                      </Button>
-                    )}
-                  </div>
+                  <div className="mt-5 space-y-2">
+  {isCurrent ? (
+    <>
+      <Button className="w-full" variant="secondary" disabled>
+        {subscriptionLoading ? "Betöltés..." : "Aktív csomag"}
+      </Button>
+
+      {plan.key !== "free" && (
+        <Button
+          className="w-full"
+          variant="outline"
+          onClick={openCustomerPortal}
+          disabled={stripeCustomerPortalUrlLoading}
+        >
+          {stripeCustomerPortalUrlLoading ? "Betöltés..." : "Előfizetés kezelése / lemondás"}
+        </Button>
+      )}
+    </>
+  ) : (
+    <Button
+      className="w-full"
+      onClick={() => changeSubscription(plan.key)}
+      disabled={changingPlan !== null}
+    >
+      {changingPlan === plan.key
+        ? "Átirányítás..."
+        : plan.key === "free"
+        ? "Ingyenes csomag"
+        : "Csomag kiválasztása"}
+    </Button>
+  )}
+</div>
                 </div>
               );
             })}
@@ -1037,7 +1150,7 @@ export default function ProfilePage() {
                 label: "Havi díj",
                 free: "0 Ft",
                 standard: "1490 Ft",
-                pro: "3000 Ft",
+                pro: "2990 Ft",
               },
             ].map((row) => (
               <div key={row.label} className="grid grid-cols-4 border-b last:border-b-0 text-sm">
@@ -1055,9 +1168,10 @@ export default function ProfilePage() {
               Fontos
             </div>
             <p>
-              Az előfizetés havi díját később Stripe fogja kezelni. A profil oldalon most a valós
-              tranzakciós díjak és az egyenlegmozgások jelennek meg.
-            </p>
+  Az előfizetések Stripe-on keresztül kerülnek terhelésre. A következő terhelés dátuma
+  a profilban jelenik meg, a lemondás és a fizetési mód kezelése pedig a Stripe
+  ügyfélportálon érhető el. A számla automatikusan emailben kerül kiküldésre.
+</p>
           </div>
         </CardContent>
       </Card>
