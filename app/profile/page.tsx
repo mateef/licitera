@@ -25,6 +25,7 @@ type ProfileRow = {
   phone: string | null;
   phone_verified: boolean | null;
   profile_image_url: string | null;
+  public_display_name?: string | null;
   subscription_tier?: "free" | "standard" | "pro" | null;
   subscription_status?: string | null;
 };
@@ -199,10 +200,10 @@ export default function ProfilePage() {
     }
 
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id,full_name,email,phone,phone_verified,profile_image_url,subscription_tier,subscription_status")
-      .eq("id", uid)
-      .maybeSingle();
+  .from("profiles")
+  .select("id,full_name,email,phone,phone_verified,profile_image_url,public_display_name,subscription_tier,subscription_status")
+  .eq("id", uid)
+  .maybeSingle();
 
     if (error) {
       setMsg(error.message);
@@ -424,14 +425,15 @@ export default function ProfilePage() {
       const phoneChanged = oldPhone.trim() !== phone.trim();
 
       const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: phone.trim(),
-          phone_verified: phoneChanged ? false : phoneVerified,
-        })
-        .eq("id", userId);
+  .from("profiles")
+  .update({
+    full_name: fullName.trim(),
+    public_display_name: toPublicName(fullName.trim()),
+    email: email.trim().toLowerCase(),
+    phone: phone.trim(),
+    phone_verified: phoneChanged ? false : phoneVerified,
+  })
+  .eq("id", userId);
 
       if (error) {
         setMsg(error.message);

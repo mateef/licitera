@@ -6,12 +6,13 @@ import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, Gavel, Clock, CheckCircle2 } from "lucide-react";
+import { Star, Clock, CheckCircle2 } from "lucide-react";
 import { formatHuf } from "@/lib/format";
 
 type ProfileRow = {
   id: string;
   full_name: string | null;
+  public_display_name: string | null;
   phone_verified: boolean | null;
 };
 
@@ -51,6 +52,11 @@ function toPublicName(fullName: string | null | undefined) {
   return `${parts[parts.length - 1]} ${parts[0].charAt(0).toUpperCase()}.`;
 }
 
+function resolveDisplayName(profileLike: { public_display_name?: string | null; full_name?: string | null } | null | undefined) {
+  if (!profileLike) return "Ismeretlen felhasználó";
+  return profileLike.public_display_name || toPublicName(profileLike.full_name);
+}
+
 function timeLeftShort(iso: string) {
   const diff = new Date(iso).getTime() - Date.now();
   if (diff <= 0) return "Lejárt";
@@ -81,7 +87,7 @@ export default function PublicProfilePage() {
   async function loadProfile() {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id,full_name,phone_verified")
+      .select("id,full_name,public_display_name,phone_verified")
       .eq("id", profileId)
       .maybeSingle();
 
@@ -133,12 +139,12 @@ export default function PublicProfilePage() {
 
     const { data: profs } = await supabase
       .from("profiles")
-      .select("id,full_name")
+      .select("id,full_name,public_display_name")
       .in("id", reviewerIds);
 
     const map: Record<string, string> = {};
     (profs ?? []).forEach((p: any) => {
-      map[p.id] = toPublicName(p.full_name);
+      map[p.id] = p.public_display_name || toPublicName(p.full_name);
     });
     setReviewerNames(map);
   }
@@ -185,7 +191,7 @@ export default function PublicProfilePage() {
     init();
   }, [profileId]);
 
-  const publicName = useMemo(() => toPublicName(profile?.full_name), [profile?.full_name]);
+  const publicName = useMemo(() => resolveDisplayName(profile), [profile]);
   const avgRatingText =
     ratingSummary?.average_rating !== null && ratingSummary?.average_rating !== undefined
       ? ratingSummary.average_rating.toFixed(1).replace(".", ",")
@@ -434,7 +440,10 @@ export default function PublicProfilePage() {
                         </a>
 
                         <div className="mt-2 text-sm text-muted-foreground">
-                          Lezárva: {item.closed_at ? new Date(item.closed_at).toLocaleString() : new Date(item.ends_at).toLocaleString()}
+                          Lezárva:{" "}
+                          {item.closed_at
+                            ? new Date(item.closed_at).toLocaleString()
+                            : new Date(item.ends_at).toLocaleString()}
                         </div>
 
                         <div className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-slate-900">

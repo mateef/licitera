@@ -86,6 +86,8 @@ type PublicProfileRow = {
   id: string;
   full_name: string | null;
   public_display_name?: string | null;
+  subscription_tier?: "free" | "standard" | "pro" | null;
+  phone_verified?: boolean | null;
 };
 
 type ListingCommentRow = {
@@ -105,6 +107,12 @@ type RatingSummaryRow = {
 
 function getDeliveryModeLabel(value: string) {
   return DELIVERY_MODES.find((x) => x.value === value)?.label ?? value;
+}
+
+function getSubscriptionBadgeLabel(tier: "free" | "standard" | "pro" | null | undefined) {
+  if (tier === "pro") return "Pro eladó";
+  if (tier === "standard") return "Standard eladó";
+  return "Ingyenes csomag";
 }
 
 export default function ListingDetailPage() {
@@ -139,6 +147,8 @@ export default function ListingDetailPage() {
   const [sellerRatingText, setSellerRatingText] = useState("Még nincs");
   const [sellerReviewCount, setSellerReviewCount] = useState<number>(0);
   const [currentLeaderDisplayName, setCurrentLeaderDisplayName] = useState("");
+  const [sellerSubscriptionTier, setSellerSubscriptionTier] = useState<"free" | "standard" | "pro">("free");
+  const [sellerPhoneVerified, setSellerPhoneVerified] = useState(false);
   const [bidUserNames, setBidUserNames] = useState<Record<string, string>>({});
 
   const [comments, setComments] = useState<ListingCommentRow[]>([]);
@@ -256,24 +266,30 @@ export default function ListingDetailPage() {
 
   async function loadSellerMeta(sellerUserId: string | null) {
     if (!sellerUserId) {
-      setSellerDisplayName("Ismeretlen hirdető");
-      setSellerRatingText("Még nincs");
-      setSellerReviewCount(0);
-      return;
-    }
+  setSellerDisplayName("Ismeretlen hirdető");
+  setSellerRatingText("Még nincs");
+  setSellerReviewCount(0);
+  setSellerSubscriptionTier("free");
+  setSellerPhoneVerified(false);
+  return;
+}
 
     const { data: profileData } = await supabase
-      .from("profiles")
-      .select("id,full_name,public_display_name")
-      .eq("id", sellerUserId)
-      .maybeSingle();
+  .from("profiles")
+  .select("id,full_name,public_display_name,subscription_tier,phone_verified")
+  .eq("id", sellerUserId)
+  .maybeSingle();
 
     if (profileData) {
-      const row = profileData as PublicProfileRow;
-      setSellerDisplayName(row.public_display_name || toPublicName(row.full_name));
-    } else {
-      setSellerDisplayName("Ismeretlen hirdető");
-    }
+  const row = profileData as PublicProfileRow;
+  setSellerDisplayName(row.public_display_name || toPublicName(row.full_name));
+  setSellerSubscriptionTier((row.subscription_tier as "free" | "standard" | "pro" | null) ?? "free");
+  setSellerPhoneVerified(!!row.phone_verified);
+} else {
+  setSellerDisplayName("Ismeretlen hirdető");
+  setSellerSubscriptionTier("free");
+  setSellerPhoneVerified(false);
+}
 
     const { data: ratingData } = await supabase
       .from("user_rating_summary")
@@ -850,6 +866,16 @@ export default function ListingDetailPage() {
                   {listing.categories.name}
                 </Badge>
               )}
+              <Badge
+  className={
+    sellerSubscriptionTier === "pro"
+      ? "rounded-full bg-amber-500 px-3 py-1 text-white hover:bg-amber-500"
+      : "rounded-full px-3 py-1"
+  }
+  variant={sellerSubscriptionTier === "pro" ? undefined : "outline"}
+>
+  {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
+</Badge>
 
               {buyNowSuccess && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
@@ -1321,15 +1347,32 @@ export default function ListingDetailPage() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Hirdető</div>
-                        <a
-                          href={listing.user_id ? `/profile/${listing.user_id}` : "#"}
-                          className="mt-1 inline-flex items-center gap-2 font-semibold text-slate-900 hover:underline"
-                        >
-                          <UserRound className="h-4 w-4" />
-                          {sellerDisplayName || "Betöltés..."}
-                        </a>
-                      </div>
+  <div className="text-xs uppercase tracking-wide text-slate-500">Hirdető</div>
+  <a
+    href={listing.user_id ? `/profile/${listing.user_id}` : "#"}
+    className="mt-1 inline-flex items-center gap-2 font-semibold text-slate-900 hover:underline"
+  >
+    <UserRound className="h-4 w-4" />
+    {sellerDisplayName || "Betöltés..."}
+  </a>
+
+  <div className="mt-2 flex flex-wrap gap-2">
+    <Badge
+      variant={sellerSubscriptionTier === "pro" ? "default" : "secondary"}
+      className={sellerSubscriptionTier === "pro" ? "bg-amber-500 hover:bg-amber-500 text-white" : ""}
+    >
+      {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
+    </Badge>
+
+    {sellerPhoneVerified ? (
+      <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+        Telefonszám hitelesítve
+      </Badge>
+    ) : (
+      <Badge variant="outline">Telefonszám nincs hitelesítve</Badge>
+    )}
+  </div>
+</div>
 
                       <div className="text-right">
                         <div className="text-xs uppercase tracking-wide text-slate-500">Értékelés</div>

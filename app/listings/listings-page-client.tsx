@@ -452,6 +452,12 @@ export default function ListingsPage() {
           is_featured: tier === "pro",
         };
       });
+            formatted.sort((a, b) => {
+        if (!!a.is_featured !== !!b.is_featured) {
+          return a.is_featured ? -1 : 1;
+        }
+        return 0;
+      });
 
       const start = (page - 1) * PAGE_SIZE;
       const end = start + PAGE_SIZE;
@@ -832,7 +838,7 @@ export default function ListingsPage() {
             </Card>
           ) : null}
 
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {loading ? (
               Array.from({ length: PAGE_SIZE }).map((_, i) => (
                 <Card key={i} className="overflow-hidden rounded-[1.75rem] border-slate-200/80">
@@ -901,7 +907,7 @@ export default function ListingsPage() {
                         {l.image_urls?.[0] ? (
                           <img
                             src={l.image_urls[0]}
-                            className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                            className="h-52 w-full object-cover transition duration-500 group-hover:scale-[1.04] sm:h-56"
                             alt={l.title}
                           />
                         ) : (
@@ -911,41 +917,41 @@ export default function ListingsPage() {
                         )}
                       </a>
 
-                      <div className="absolute left-3 top-3 flex gap-2">
+                      <div className="absolute left-3 top-3 right-[108px] flex flex-wrap gap-2 pr-2">
                         {l.is_featured && (
-                          <Badge className="rounded-full bg-amber-400 px-3 py-1 font-semibold text-black hover:bg-amber-400">
-                            KIEMELT
-                          </Badge>
+                          <Badge className="rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-semibold text-black hover:bg-amber-400 sm:px-3 sm:text-xs">
+  KIEMELT
+</Badge>
                         )}
 
                         {l.categories?.name && (
-                          <Badge className="rounded-full border-white/20 bg-black/45 px-3 py-1 text-white backdrop-blur">
-                            {l.categories.name}
-                          </Badge>
+                          <Badge className="rounded-full border-white/20 bg-black/45 px-2.5 py-1 text-[11px] text-white backdrop-blur sm:px-3 sm:text-xs">
+  {l.categories.name}
+</Badge>
                         )}
 
                         {endingSoon && (
-                          <Badge variant="destructive" className="rounded-full px-3 py-1">
-                            Hamarosan lejár
-                          </Badge>
+                          <Badge variant="destructive" className="rounded-full px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs">
+  Hamarosan lejár
+</Badge>
                         )}
                       </div>
 
                       <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const res = toggleWatchlistId(l.id);
-                          setWatchIds(res.ids);
-                        }}
-                        className="absolute right-3 top-3 rounded-full border border-white/20 bg-white/85 px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm backdrop-blur hover:bg-white"
-                        title={isWatched ? "Levétel a figyelőlistáról" : "Hozzáadás a figyelőlistához"}
-                      >
-                        {isWatched ? "✓ Mentve" : "♡ Mentés"}
-                      </button>
+  type="button"
+  onClick={(e) => {
+    e.preventDefault();
+    const res = toggleWatchlistId(l.id);
+    setWatchIds(res.ids);
+  }}
+  className="absolute right-3 top-3 z-10 rounded-full border border-white/20 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm backdrop-blur hover:bg-white sm:px-3 sm:text-sm"
+  title={isWatched ? "Levétel a figyelőlistáról" : "Hozzáadás a figyelőlistához"}
+>
+  {isWatched ? "✓ Mentve" : "♡ Mentés"}
+</button>
                     </div>
 
-                    <CardHeader className="space-y-3 pb-3">
+                    <CardHeader className="space-y-3 px-4 pb-3 pt-4 sm:px-6">
                       <div className="space-y-2">
                         <CardTitle className="line-clamp-2 text-lg leading-6">
                           <a href={`/listing/${l.id}`} className="transition hover:text-primary">
@@ -979,7 +985,7 @@ export default function ListingsPage() {
                           </div>
                         </div>
 
-                        <div className="rounded-2xl bg-slate-100 px-3 py-2 text-right">
+                        <div className="shrink-0 rounded-2xl bg-slate-100 px-3 py-2 text-right">
                           <div className="text-[11px] uppercase tracking-wide text-slate-500">
                             Licitek
                           </div>
@@ -990,7 +996,7 @@ export default function ListingsPage() {
                       </div>
                     </CardHeader>
 
-                    <CardContent className="space-y-4 pt-0 text-sm">
+                    <CardContent className="space-y-4 px-4 pb-4 pt-0 text-sm sm:px-6 sm:pb-6">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-2xl bg-slate-50 p-3">
                           <div className="text-xs uppercase tracking-wide text-slate-500">

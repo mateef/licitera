@@ -10,6 +10,7 @@
     "seed:categories": "node scripts/seed-categories.mjs"
   },
   "dependencies": {
+    "@stripe/stripe-js": "^8.11.0",
     "@supabase/supabase-js": "^2.98.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -24,6 +25,7 @@
     "react-dom": "19.2.3",
     "resend": "^6.9.3",
     "sonner": "^2.0.7",
+    "stripe": "^20.4.1",
     "tailwind-merge": "^3.5.0",
     "twilio": "^5.12.2"
   },
