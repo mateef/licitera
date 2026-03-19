@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Crown, Wallet, CheckCircle2, Sparkles } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type SubscriptionTier = "free" | "standard" | "pro";
 
@@ -58,6 +59,9 @@ const SUBSCRIPTION_PLANS: {
 ];
 
 export default function BillingPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [balance, setBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [topupLoading, setTopupLoading] = useState(false);
@@ -70,6 +74,76 @@ export default function BillingPage() {
   const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
   const [usedSuccessfulSales, setUsedSuccessfulSales] = useState(0);
   const [currentMonthFeeTotal, setCurrentMonthFeeTotal] = useState(0);
+
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [stripeCustomerPortalUrlLoading, setStripeCustomerPortalUrlLoading] = useState(false);
+  const [nextBillingDate, setNextBillingDate] = useState<string>("");
+
+  const [topupStatusMessage, setTopupStatusMessage] = useState("");
+  const [topupStatusType, setTopupStatusType] = useState<"success" | "cancel" | "">("");
+
+  const [subscriptionStatusMessage, setSubscriptionStatusMessage] = useState("");
+  const [subscriptionStatusType, setSubscriptionStatusType] = useState<"success" | "cancel" | "">("");
+
+  function formatHufAmount(value: number | null | undefined) {
+    if (value === null || value === undefined) return "-";
+    return new Intl.NumberFormat("hu-HU").format(value) + " Ft";
+  }
+
+  function formatDisplayDate(value: string | null | undefined) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("hu-HU", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
+
+  async function loadStripeSubscriptionStatus(uid: string) {
+    if (!uid) return;
+
+    setSubscriptionLoading(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        return;
+      }
+
+      const res = await fetch("/api/stripe/subscription-status", {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        return;
+      }
+
+      if (data?.subscriptionTier) {
+        setSubscriptionTier(data.subscriptionTier);
+      }
+
+      if (data?.subscriptionStatus) {
+        setSubscriptionStatus(data.subscriptionStatus);
+      }
+
+      setNextBillingDate(data?.currentPeriodEnd ?? "");
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -125,6 +199,8 @@ export default function BillingPage() {
 
     setCurrentMonthFeeTotal(totalMonthFee);
 
+    await loadStripeSubscriptionStatus(uid);
+
     setLoading(false);
   }
 
@@ -132,52 +208,93 @@ export default function BillingPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const topup = searchParams.get("topup");
+    const stripe = searchParams.get("stripe");
+
+    let shouldReload = false;
+
+    if (topup === "success") {
+      setTopupStatusType("success");
+      setTopupStatusMessage("Sikeres egyenlegrendezés. Az egyenleged frissítve lett.");
+      toast.success("Sikeres egyenlegrendezés.");
+      shouldReload = true;
+    } else if (topup === "cancel") {
+      setTopupStatusType("cancel");
+      setTopupStatusMessage("Az egyenlegrendezés megszakadt, nem történt terhelés.");
+      toast.info("Az egyenlegrendezés megszakadt.");
+    }
+
+    if (stripe === "success") {
+      setSubscriptionStatusType("success");
+      setSubscriptionStatusMessage("Az előfizetés sikeresen aktiválódott vagy frissült.");
+      toast.success("Előfizetés sikeresen frissítve.");
+      shouldReload = true;
+    } else if (stripe === "cancel") {
+      setSubscriptionStatusType("cancel");
+      setSubscriptionStatusMessage("Az előfizetés indítása megszakadt.");
+      toast.info("Az előfizetés indítása megszakadt.");
+    }
+
+    if (shouldReload) {
+      loadData();
+    }
+
+    if (topup || stripe) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("topup");
+      params.delete("stripe");
+      const query = params.toString();
+      router.replace(query ? `/billing?${query}` : "/billing");
+    }
+  }, [router, searchParams]);
+
   async function handleTopup() {
-  if (topupLoading) return;
+    if (topupLoading) return;
 
-  setTopupLoading(true);
+    setTopupLoading(true);
 
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const accessToken = session?.access_token;
+      const accessToken = session?.access_token;
 
-    if (!accessToken) {
-      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
-      return;
+      if (!accessToken) {
+        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/create-balance-topup-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült elindítani az egyenlegrendezést.");
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Hiányzik a Stripe checkout URL.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setTopupLoading(false);
     }
-
-    const res = await fetch("/api/stripe/create-balance-topup-checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.error || "Nem sikerült elindítani az egyenlegrendezést.");
-      return;
-    }
-
-    if (!data?.url) {
-      toast.error("Hiányzik a Stripe checkout URL.");
-      return;
-    }
-
-    window.location.href = data.url;
-  } finally {
-    setTopupLoading(false);
   }
-}
 
   async function changeSubscription(tier: SubscriptionTier) {
     if (tier === "free") {
-      toast.info("Az ingyenes csomag az alapértelmezett.");
+      toast.info("Az ingyenes csomag az alapértelmezett. Lemondáshoz használd az előfizetéskezelőt.");
       return;
     }
 
@@ -222,6 +339,47 @@ export default function BillingPage() {
     }
   }
 
+  async function openCustomerPortal() {
+    setStripeCustomerPortalUrlLoading(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/customer-portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült megnyitni az előfizetéskezelőt.");
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Hiányzik a Customer Portal URL.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setStripeCustomerPortalUrlLoading(false);
+    }
+  }
+
   const currentPlan = useMemo(() => {
     return SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0];
   }, [subscriptionTier]);
@@ -236,11 +394,6 @@ export default function BillingPage() {
       ? "0 Ft havi 10 aukcióig, utána alapdíj"
       : "0 Ft havi 20 aukcióig, utána alapdíj";
 
-  function formatHufAmount(value: number | null | undefined) {
-    if (value === null || value === undefined) return "-";
-    return new Intl.NumberFormat("hu-HU").format(value) + " Ft";
-  }
-
   if (loading) {
     return <div className="mx-auto max-w-5xl p-6">Betöltés...</div>;
   }
@@ -253,6 +406,30 @@ export default function BillingPage() {
           Itt látod a rendszerhasználati díjaidat, egyenlegedet és az aktív csomagodat.
         </p>
       </div>
+
+      {topupStatusMessage ? (
+        <div
+          className={`rounded-2xl border p-4 text-sm ${
+            topupStatusType === "success"
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {topupStatusMessage}
+        </div>
+      ) : null}
+
+      {subscriptionStatusMessage ? (
+        <div
+          className={`rounded-2xl border p-4 text-sm ${
+            subscriptionStatusType === "success"
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {subscriptionStatusMessage}
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
@@ -286,8 +463,8 @@ export default function BillingPage() {
             </Button>
 
             <div className="mt-3 text-xs text-muted-foreground">
-  Az egyenlegrendezés Stripe-on keresztül történik. A fizetésről a számla emailben kerül kiküldésre.
-</div>
+              Az egyenlegrendezés Stripe-on keresztül történik. A fizetésről a számla emailben kerül kiküldésre.
+            </div>
           </div>
 
           <div className="rounded-2xl border bg-white p-6">
@@ -345,9 +522,41 @@ export default function BillingPage() {
             <div className="mt-1 text-sm text-slate-600">{currentPlan.priceLabel}</div>
             <div className="mt-3">
               <Badge variant="secondary">
-                {subscriptionStatus === "active" ? "Aktív" : subscriptionStatus}
+                {subscriptionLoading
+                  ? "Betöltés..."
+                  : subscriptionStatus === "active"
+                  ? "Aktív"
+                  : subscriptionStatus}
               </Badge>
             </div>
+
+            {subscriptionTier !== "free" && nextBillingDate ? (
+              <div className="mt-3 text-sm text-slate-600">
+                Következő terhelés:{" "}
+                <span className="font-medium text-slate-900">
+                  {formatDisplayDate(nextBillingDate)}
+                </span>
+              </div>
+            ) : null}
+
+            {subscriptionTier !== "free" ? (
+              <>
+                <div className="mt-2 text-xs text-slate-500">
+                  Az előfizetés számlája automatikusan emailben kerül kiküldésre.
+                </div>
+
+                <Button
+                  className="mt-4 w-full"
+                  variant="outline"
+                  onClick={openCustomerPortal}
+                  disabled={stripeCustomerPortalUrlLoading}
+                >
+                  {stripeCustomerPortalUrlLoading
+                    ? "Betöltés..."
+                    : "Előfizetés kezelése / lemondás"}
+                </Button>
+              </>
+            ) : null}
           </div>
 
           <div className="grid gap-4">
@@ -473,9 +682,10 @@ export default function BillingPage() {
           Fontos
         </div>
         <p>
-          Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Az
-          előfizetés Stripe-on keresztül kezelhető, az egyenlegrendezés online fizetéssel később
-          lesz bekötve.
+          Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Az előfizetés
+          Stripe-on keresztül kezelhető, a következő terhelés dátuma itt jelenik meg, a lemondás és a
+          fizetési mód kezelése pedig a Stripe ügyfélportálon érhető el. A számla automatikusan emailben
+          kerül kiküldésre.
         </p>
       </div>
     </div>
