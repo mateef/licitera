@@ -73,30 +73,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const amountToPay = Math.round(Math.abs(rawBalance));
+    // HUF special case:
+    // charge oldalon minor unit kell, ezért 2000 Ft => 200000
+    const amountInHuf = Math.round(Math.abs(rawBalance));
+    const stripeUnitAmount = amountInHuf * 100;
 
     console.log("BALANCE TOPUP AMOUNT", {
       rawBalance,
-      amountToPay,
+      amountInHuf,
+      stripeUnitAmount,
     });
 
-    if (amountToPay < 175) {
+    if (amountInHuf < 175) {
       return NextResponse.json(
         {
-          error: `A Stripe minimum összeg HUF esetén 175 Ft. A számolt összeg most: ${amountToPay} Ft. Valószínűleg a billing_user_balances.balance_amount mezőben nem -2000, hanem kisebb érték van.`,
+          error: `A Stripe minimum összeg HUF esetén 175 Ft. A jelenlegi rendezendő összeg: ${amountInHuf} Ft.`,
         },
         { status: 400 }
       );
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL!;
-        console.log("BALANCE TOPUP CREATE SESSION INPUT", {
+
+    console.log("BALANCE TOPUP CREATE SESSION INPUT", {
       customerEmail: (profile as any)?.email ?? user.email ?? undefined,
-      amountToPay,
+      amountInHuf,
+      stripeUnitAmount,
       baseUrl,
     });
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      payment_method_types: ["card"],
       customer_email: (profile as any)?.email ?? user.email ?? undefined,
       line_items: [
         {
@@ -106,7 +114,7 @@ export async function POST(req: NextRequest) {
               name: "Licitera egyenlegrendezés",
               description: "Negatív egyenleg rendezése a Licitera rendszerben",
             },
-            unit_amount: amountToPay,
+            unit_amount: stripeUnitAmount,
           },
           quantity: 1,
         },
@@ -116,12 +124,13 @@ export async function POST(req: NextRequest) {
       metadata: {
         type: "balance_topup",
         user_id: user.id,
-        amount_huf: String(amountToPay),
+        amount_huf: String(amountInHuf),
+        stripe_unit_amount: String(stripeUnitAmount),
       },
     });
 
     return NextResponse.json({ url: session.url });
-    } catch (error: any) {
+  } catch (error: any) {
     console.error("STRIPE BALANCE TOPUP ERROR:", error);
     console.error("STRIPE BALANCE TOPUP ERROR RAW:", error?.raw);
     console.error("STRIPE BALANCE TOPUP ERROR MESSAGE:", error?.message);

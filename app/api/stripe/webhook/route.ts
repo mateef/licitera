@@ -33,6 +33,8 @@ export async function POST(req: Request) {
   }
 
   try {
+    console.log("STRIPE WEBHOOK EVENT:", event.type, event.id);
+
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       const metadata = session.metadata || {};
@@ -50,6 +52,7 @@ export async function POST(req: Request) {
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
         const priceId = subscription.items.data[0]?.price?.id;
+        const userId = metadata.user_id;
 
         const tier =
           priceId === process.env.STRIPE_STANDARD_PRICE_ID
@@ -58,7 +61,14 @@ export async function POST(req: Request) {
             ? "pro"
             : "free";
 
-        await supabaseAdmin
+        if (!userId) {
+          return NextResponse.json(
+            { error: "Hiányzó user_id a subscription metadata-ban." },
+            { status: 400 }
+          );
+        }
+
+        const { error: profileUpdateError } = await supabaseAdmin
           .from("profiles")
           .update({
             stripe_customer_id: customerId,
@@ -66,75 +76,102 @@ export async function POST(req: Request) {
             subscription_tier: tier,
             subscription_status: subscription.status,
             subscription_current_period_end:
-              subscription.items?.data?.[0]?.current_period_end
+              subscription.items.data[0]?.current_period_end
                 ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
                 : null,
           })
-          .eq("stripe_customer_id", customerId);
+          .eq("id", userId);
+
+        if (profileUpdateError) {
+          return NextResponse.json(
+            { error: profileUpdateError.message },
+            { status: 500 }
+          );
+        }
+
+        console.log("SUBSCRIPTION PROFILE UPDATED", {
+          userId,
+          customerId,
+          subscriptionId: subscription.id,
+          tier,
+          status: subscription.status,
+        });
       }
 
       // 2) Balance topup checkout kezelése
       if (session.mode === "payment" && metadata.type === "balance_topup") {
-        const userId = metadata.user_id;
-        const amountHuf = Number(metadata.amount_huf ?? "0");
+  console.log("BALANCE TOPUP WEBHOOK START", {
+    sessionId: session.id,
+    metadata,
+  });
 
-        if (!userId || !Number.isFinite(amountHuf) || amountHuf <= 0) {
-          return NextResponse.json(
-            { error: "Hibás balance topup metadata." },
-            { status: 400 }
-          );
-        }
+  const userId = metadata.user_id;
+  const amountHuf = Number(metadata.amount_huf ?? "0");
 
-        const { data: balanceRow, error: balanceError } = await supabaseAdmin
-          .from("billing_user_balances")
-          .select("balance_amount")
-          .eq("user_id", userId)
-          .maybeSingle();
+  console.log("BALANCE TOPUP WEBHOOK METADATA PARSED", {
+    userId,
+    amountHuf,
+  });
 
-        if (balanceError) {
-          return NextResponse.json(
-            { error: balanceError.message },
-            { status: 500 }
-          );
-        }
+  if (!userId || !Number.isFinite(amountHuf) || amountHuf <= 0) {
+    return NextResponse.json(
+      { error: "Hibás balance topup metadata." },
+      { status: 400 }
+    );
+  }
 
-        const currentBalance = Number((balanceRow as any)?.balance_amount ?? 0);
-        const newBalance = currentBalance + amountHuf;
+  const { data: existingLedger, error: existingLedgerError } = await supabaseAdmin
+    .from("billing_ledger")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("entry_type", "balance_topup")
+    .eq("description", `Stripe egyenlegrendezés (${session.id})`)
+    .maybeSingle();
 
-        const { error: upsertBalanceError } = await supabaseAdmin
-          .from("billing_user_balances")
-          .upsert(
-            {
-              user_id: userId,
-              balance_amount: newBalance,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" }
-          );
+  if (existingLedgerError) {
+    return NextResponse.json(
+      { error: existingLedgerError.message },
+      { status: 500 }
+    );
+  }
 
-        if (upsertBalanceError) {
-          return NextResponse.json(
-            { error: upsertBalanceError.message },
-            { status: 500 }
-          );
-        }
+  if (existingLedger) {
+    console.log("BALANCE TOPUP ALREADY PROCESSED", {
+      sessionId: session.id,
+      userId,
+    });
 
-        const { error: ledgerError } = await supabaseAdmin
-          .from("billing_ledger")
-          .insert({
-            user_id: userId,
-            entry_type: "balance_topup",
-            amount: amountHuf,
-            description: "Stripe egyenlegrendezés",
-          });
+    return NextResponse.json({ received: true, duplicate: true });
+  }
 
-        if (ledgerError) {
-          return NextResponse.json(
-            { error: ledgerError.message },
-            { status: 500 }
-          );
-        }
-      }
+  const { error: ledgerError } = await supabaseAdmin
+    .from("billing_ledger")
+    .insert({
+      user_id: userId,
+      entry_type: "balance_topup",
+      amount: amountHuf,
+      description: `Stripe egyenlegrendezés (${session.id})`,
+    });
+
+  if (ledgerError) {
+    return NextResponse.json(
+      { error: ledgerError.message },
+      { status: 500 }
+    );
+  }
+
+  console.log("BALANCE TOPUP LEDGER INSERT DONE", {
+    userId,
+    amountHuf,
+    description: `Stripe egyenlegrendezés (${session.id})`,
+  });
+
+  console.log("BALANCE TOPUP SUCCESS", {
+    userId,
+    sessionId: session.id,
+    amountHuf,
+  });
+}
     }
 
     if (
@@ -160,22 +197,37 @@ export async function POST(req: Request) {
           ? "pro"
           : "free";
 
-      await supabaseAdmin
+      const { error: profileUpdateError } = await supabaseAdmin
         .from("profiles")
         .update({
           stripe_subscription_id: subscription.status === "canceled" ? null : subscription.id,
           subscription_tier: tier,
           subscription_status: subscription.status,
           subscription_current_period_end:
-            subscription.items?.data?.[0]?.current_period_end
+            subscription.items.data[0]?.current_period_end
               ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
               : null,
         })
         .eq("stripe_customer_id", customerId);
+
+      if (profileUpdateError) {
+        return NextResponse.json(
+          { error: profileUpdateError.message },
+          { status: 500 }
+        );
+      }
+
+      console.log("SUBSCRIPTION STATUS SYNCED", {
+        customerId,
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        tier,
+      });
     }
 
     return NextResponse.json({ received: true });
   } catch (error: any) {
+    console.error("STRIPE WEBHOOK ERROR:", error);
     return NextResponse.json(
       { error: error?.message || "Webhook feldolgozási hiba." },
       { status: 500 }

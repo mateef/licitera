@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/profile?stripe=cancel`,
       metadata: {
         user_id: user.id,
-        subscription_tier: tier,
+        tier,
       },
     });
 
