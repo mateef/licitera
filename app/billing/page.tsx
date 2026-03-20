@@ -295,60 +295,60 @@ export default function BillingPage() {
   }
 
   async function changeSubscription(tier: SubscriptionTier) {
-    if (tier === "free") {
-      toast.info(
-        "Az ingyenes csomagra váltást lemondással tudod intézni az előfizetéskezelőben."
-      );
-      return;
-    }
-
-    if (subscriptionTier === "pro" && tier === "standard") {
-      toast.info("Pro csomagról Standard csomagra váltás nem elérhető.");
-      return;
-    }
-
-    setChangingPlan(tier);
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
-        return;
-      }
-
-      
-
-      const res = await fetch("/api/stripe/create-subscription-checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ tier }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
-        return;
-      }
-
-      if (!data?.url) {
-        toast.error("Hiányzik a Stripe checkout URL.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } finally {
-      setChangingPlan(null);
-    }
+  if (tier === "free") {
+    toast.info(
+      "Az ingyenes csomagra váltást lemondással tudod intézni az előfizetéskezelőben."
+    );
+    return;
   }
+
+  if (hasPaidSubscription) {
+    toast.info(
+      "Aktív fizetős előfizetés mellett a csomagváltás az előfizetéskezelőben érhető el."
+    );
+    return;
+  }
+
+  setChangingPlan(tier);
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+      return;
+    }
+
+    const res = await fetch("/api/stripe/create-subscription-checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ tier }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
+      return;
+    }
+
+    if (!data?.url) {
+      toast.error("Hiányzik a Stripe checkout URL.");
+      return;
+    }
+
+    window.location.href = data.url;
+  } finally {
+    setChangingPlan(null);
+  }
+}
 
   async function openCustomerPortal() {
     setStripeCustomerPortalUrlLoading(true);
@@ -396,6 +396,9 @@ export default function BillingPage() {
       SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0]
     );
   }, [subscriptionTier]);
+
+  const hasPaidSubscription =
+  subscriptionTier === "standard" || subscriptionTier === "pro";
 
   const currentMonthlyFee =
     subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 2990 : 0;
@@ -568,37 +571,36 @@ export default function BillingPage() {
               </div>
             ) : null}
 
-            {subscriptionTier !== "free" ? (
-              <>
-                <div className="mt-2 text-xs text-slate-500">
-                  Lemondás az aktuális számlázási időszak végére indítható az előfizetéskezelőben.
-                </div>
+            {hasPaidSubscription ? (
+  <>
+    <div className="mt-2 text-xs text-slate-500">
+      Lemondás az aktuális számlázási időszak végére indítható az előfizetéskezelőben.
+    </div>
 
-                <div className="mt-2 text-xs text-slate-500">
-                  Az előfizetés számlája automatikusan emailben kerül kiküldésre.
-                </div>
+    <div className="mt-2 text-xs text-slate-500">
+      Az előfizetés számlája automatikusan emailben kerül kiküldésre.
+    </div>
 
-                <Button
-                  className="mt-4 w-full"
-                  variant="outline"
-                  onClick={openCustomerPortal}
-                  disabled={stripeCustomerPortalUrlLoading}
-                >
-                  {stripeCustomerPortalUrlLoading
-                    ? "Betöltés..."
-                    : "Előfizetés kezelése / lemondás"}
-                </Button>
-              </>
-            ) : null}
+    <Button
+      className="mt-4 w-full"
+      variant="outline"
+      onClick={openCustomerPortal}
+      disabled={stripeCustomerPortalUrlLoading}
+    >
+      {stripeCustomerPortalUrlLoading
+        ? "Betöltés..."
+        : "Előfizetés kezelése / lemondás"}
+    </Button>
+  </>
+) : null}
           </div>
 
           <div className="grid gap-4">
             {SUBSCRIPTION_PLANS.map((plan) => {
-              const isCurrent = plan.key === subscriptionTier;
-const isPaidUser = subscriptionTier === "standard" || subscriptionTier === "pro";
-const canSelectWithCheckout =
-  subscriptionTier === "free" &&
-  (plan.key === "standard" || plan.key === "pro");
+  const isCurrent = plan.key === subscriptionTier;
+  const canSelectWithCheckout =
+    !hasPaidSubscription &&
+    (plan.key === "standard" || plan.key === "pro");
 
               return (
                 <div
@@ -647,7 +649,7 @@ const canSelectWithCheckout =
     >
       {changingPlan === plan.key ? "Átirányítás..." : "Csomag kiválasztása"}
     </Button>
-  ) : isPaidUser ? (
+  ) : hasPaidSubscription ? (
     <div className="space-y-2">
       <Button className="w-full" variant="outline" disabled>
         Előfizetéskezelőben módosítható
