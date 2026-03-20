@@ -321,29 +321,7 @@ export default function BillingPage() {
         return;
       }
 
-      const isPaidPlan = subscriptionTier === "standard" || subscriptionTier === "pro";
-
-      if (isPaidPlan) {
-        const res = await fetch("/api/stripe/change-subscription-plan", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ tier }),
-        });
-
-        const data = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          toast.error(data?.error || "Nem sikerült módosítani az előfizetést.");
-          return;
-        }
-
-        toast.success("Az előfizetés módosítva lett.");
-        await loadData();
-        return;
-      }
+      
 
       const res = await fetch("/api/stripe/create-subscription-checkout", {
         method: "POST",
@@ -439,7 +417,7 @@ export default function BillingPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <div className="inline-flex rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-slate-600 backdrop-blur">
-              Billing
+              Számlázás
             </div>
             <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
               Egyenleg és előfizetés
@@ -617,13 +595,10 @@ export default function BillingPage() {
           <div className="grid gap-4">
             {SUBSCRIPTION_PLANS.map((plan) => {
               const isCurrent = plan.key === subscriptionTier;
-              const isDowngradeFromProToStandard =
-                subscriptionTier === "pro" && plan.key === "standard";
-              const isUpgrade = subscriptionTier === "standard" && plan.key === "pro";
-              const canSelectWithCheckout =
-                subscriptionTier === "free" &&
-                (plan.key === "standard" || plan.key === "pro");
-              const canChangePlan = isUpgrade || canSelectWithCheckout;
+const isPaidUser = subscriptionTier === "standard" || subscriptionTier === "pro";
+const canSelectWithCheckout =
+  subscriptionTier === "free" &&
+  (plan.key === "standard" || plan.key === "pro");
 
               return (
                 <div
@@ -660,38 +635,34 @@ export default function BillingPage() {
                   </div>
 
                   <div className="mt-auto pt-5">
-                    {isCurrent ? (
-                      <Button className="w-full" variant="secondary" disabled>
-                        Aktív csomag
-                      </Button>
-                    ) : isDowngradeFromProToStandard ? (
-                      <div className="space-y-2">
-                        <Button className="w-full" variant="outline" disabled>
-                          Nem váltható
-                        </Button>
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                          Pro csomagról Standard csomagra váltás nem érhető el. Lemondást az
-                          előfizetéskezelőben tudsz indítani.
-                        </div>
-                      </div>
-                    ) : canChangePlan ? (
-                      <Button
-                        className="w-full"
-                        onClick={() => changeSubscription(plan.key)}
-                        disabled={changingPlan !== null}
-                      >
-                        {changingPlan === plan.key
-                          ? "Átirányítás..."
-                          : subscriptionTier === "standard" && plan.key === "pro"
-                            ? "Váltás Pro csomagra"
-                            : "Csomag kiválasztása"}
-                      </Button>
-                    ) : (
-                      <Button className="w-full" variant="outline" disabled>
-                        Nem elérhető
-                      </Button>
-                    )}
-                  </div>
+  {isCurrent ? (
+    <Button className="w-full" variant="secondary" disabled>
+      Aktív csomag
+    </Button>
+  ) : canSelectWithCheckout ? (
+    <Button
+      className="w-full"
+      onClick={() => changeSubscription(plan.key)}
+      disabled={changingPlan !== null}
+    >
+      {changingPlan === plan.key ? "Átirányítás..." : "Csomag kiválasztása"}
+    </Button>
+  ) : isPaidUser ? (
+    <div className="space-y-2">
+      <Button className="w-full" variant="outline" disabled>
+        Előfizetéskezelőben módosítható
+      </Button>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        Aktív fizetős előfizetés mellett a csomagváltás és a lemondás az
+        „Előfizetés kezelése / lemondás” gombon keresztül érhető el.
+      </div>
+    </div>
+  ) : (
+    <Button className="w-full" variant="outline" disabled>
+      Nem elérhető
+    </Button>
+  )}
+</div>
                 </div>
               );
             })}
