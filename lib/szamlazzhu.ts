@@ -3,7 +3,14 @@ function escapeXml(unsafe: string) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function getTagValue(xml: string, tagName: string) {
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)</${tagName}>`, "i");
+  const match = xml.match(regex);
+  return match?.[1]?.trim() ?? null;
 }
 
 export async function createSzamlazzHuInvoice({
@@ -19,13 +26,16 @@ export async function createSzamlazzHuInvoice({
 }) {
   const agentKey = process.env.SZAMLAZZHU_AGENT_KEY;
   const isTest = process.env.SZAMLAZZHU_TEST_MODE === "true";
-
   const today = new Date().toISOString().split("T")[0];
+
+  if (!agentKey) {
+    throw new Error("Hiányzik a SZAMLAZZHU_AGENT_KEY env.");
+  }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamla>
   <beallitasok>
-    <szamlaagentkulcs>${agentKey}</szamlaagentkulcs>
+    <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
     <eszamla>true</eszamla>
     <emailKuldes>true</emailKuldes>
     <szamlaLetoltes>true</szamlaLetoltes>
@@ -70,11 +80,30 @@ export async function createSzamlazzHuInvoice({
     body: xml,
   });
 
+  const raw = await res.text();
+
+  console.log("SZAMLAZZ STATUS:", res.status);
+  console.log("SZAMLAZZ RAW RESPONSE:", raw);
+
   if (!res.ok) {
-    const text = await res.text();
-    console.error("SZAMLAZZ ERROR:", text);
-    throw new Error("Számlázás sikertelen");
+    throw new Error(`Számlázz.hu HTTP hiba: ${res.status}`);
   }
 
-  return await res.arrayBuffer();
+  const success = getTagValue(raw, "sikeres");
+  const errorCode = getTagValue(raw, "hibakod");
+  const errorMessage = getTagValue(raw, "hibauzenet");
+  const invoiceNumber = getTagValue(raw, "szamlaszam");
+
+  if (success !== "true") {
+    throw new Error(
+      `Számlázz.hu hiba${errorCode ? ` (${errorCode})` : ""}: ${
+        errorMessage || "Ismeretlen számlázási hiba."
+      }`
+    );
+  }
+
+  return {
+    invoiceNumber,
+    rawResponse: raw,
+  };
 }
