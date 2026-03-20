@@ -248,6 +248,8 @@ async function handleBalanceTopupCheckoutCompleted(
   session: Stripe.Checkout.Session,
   stripeEventId: string
 ) {
+
+    
   const metadata = session.metadata || {};
 
   if (session.mode !== "payment" || metadata.type !== "balance_topup") {
@@ -257,7 +259,10 @@ async function handleBalanceTopupCheckoutCompleted(
   console.log("BALANCE TOPUP WEBHOOK START", {
     sessionId: session.id,
     metadata,
+    
   });
+
+  
 
   const userId = metadata.user_id;
   const amountHuf = Number(metadata.amount_huf ?? "0");
@@ -305,6 +310,19 @@ async function handleBalanceTopupCheckoutCompleted(
     fallbackName: profile.full_name,
     fallbackEmail: profile.email,
   });
+
+console.log("BALANCE TOPUP INVOICE BUYER DEBUG", {
+  userId,
+  customerId,
+  sessionCustomerEmail: session.customer_details?.email,
+  profileEmail: profile.email,
+  buyerName: buyer.name,
+  buyerEmail: buyer.email,
+  postalCode: buyer.postalCode,
+  city: buyer.city,
+  addressLine: buyer.addressLine,
+  country: buyer.country,
+});
 
   const invoiceResult = await createSzamlazzHuInvoice({
     name: buyer.name,
@@ -418,6 +436,14 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice, stripeEven
     fallbackName: profile.full_name,
     fallbackEmail: profile.email,
   });
+
+  console.log("SUBSCRIPTION INVOICE BUYER DEBUG", {
+  customerId,
+  invoiceCustomerEmail: invoice.customer_email,
+  profileEmail: profile.email,
+  buyerName: buyer.name,
+  buyerEmail: buyer.email,
+});
 
   const invoiceResult = await createSzamlazzHuInvoice({
     name: buyer.name,
