@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("email")
+      .select("id,email,full_name,stripe_customer_id")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -73,8 +73,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // HUF special case:
-    // charge oldalon minor unit kell, ezért 2000 Ft => 200000
+    // A jelenlegi projektedben ez a működő Stripe HUF beállítás:
+    // 200 Ft => 20000, 2000 Ft => 200000
     const amountInHuf = Math.round(Math.abs(rawBalance));
     const stripeUnitAmount = amountInHuf * 100;
 
@@ -93,10 +93,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let stripeCustomerId = (profile as any)?.stripe_customer_id as string | null;
+
+    if (stripeCustomerId) {
+      try {
+        const existingCustomer = await stripe.customers.retrieve(stripeCustomerId);
+
+        if ((existingCustomer as any)?.deleted) {
+          stripeCustomerId = null;
+        }
+      } catch {
+        stripeCustomerId = null;
+      }
+    }
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: (profile as any)?.email || user.email || undefined,
+        name: (profile as any)?.full_name || undefined,
+        metadata: {
+          user_id: user.id,
+        },
+      });
+
+      stripeCustomerId = customer.id;
+
+      const { error: customerUpdateError } = await supabaseAdmin
+        .from("profiles")
+        .update({ stripe_customer_id: stripeCustomerId })
+        .eq("id", user.id);
+
+      if (customerUpdateError) {
+        return NextResponse.json({ error: customerUpdateError.message }, { status: 500 });
+      }
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL!;
 
     console.log("BALANCE TOPUP CREATE SESSION INPUT", {
-      customerEmail: (profile as any)?.email ?? user.email ?? undefined,
+      customerId: stripeCustomerId,
       amountInHuf,
       stripeUnitAmount,
       baseUrl,
@@ -105,7 +140,12 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
-      customer_email: (profile as any)?.email ?? user.email ?? undefined,
+      customer: stripeCustomerId,
+      billing_address_collection: "required",
+      customer_update: {
+        address: "auto",
+        name: "auto",
+      },
       line_items: [
         {
           price_data: {

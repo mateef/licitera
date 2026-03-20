@@ -21,6 +21,20 @@ function getTierFromPriceId(priceId: string | null | undefined): "free" | "stand
   return "free";
 }
 
+function buildAddressLine(address: {
+  line1?: string | null;
+  line2?: string | null;
+} | null | undefined) {
+  const line1 = address?.line1?.trim() || "";
+  const line2 = address?.line2?.trim() || "";
+
+  if (line1 && line2) {
+    return `${line1} ${line2}`;
+  }
+
+  return line1 || line2 || "";
+}
+
 async function hasExistingInvoice(stripeObjectId: string, invoiceType: string) {
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
@@ -101,6 +115,78 @@ async function getProfileByCustomerId(customerId: string) {
     stripe_customer_id: string | null;
     subscription_tier: "free" | "standard" | "pro" | null;
   } | null;
+}
+
+async function getStripeCustomer(customerId: string | null | undefined) {
+  if (!customerId) return null;
+
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+
+    if ((customer as any)?.deleted) {
+      return null;
+    }
+
+    return customer as Stripe.Customer;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function resolveInvoiceAddressData({
+  session,
+  invoice,
+  customerId,
+  fallbackName,
+  fallbackEmail,
+}: {
+  session?: Stripe.Checkout.Session;
+  invoice?: Stripe.Invoice;
+  customerId?: string | null;
+  fallbackName?: string | null;
+  fallbackEmail?: string | null;
+}) {
+  const stripeCustomer = await getStripeCustomer(customerId ?? null);
+
+  const sessionAddress = session?.customer_details?.address;
+  const customerAddress = stripeCustomer?.address;
+  const resolvedAddress = sessionAddress || customerAddress || null;
+
+  const sessionName = session?.customer_details?.name || null;
+  const invoiceName = invoice?.customer_name || null;
+  const customerName = stripeCustomer?.name || null;
+
+  const sessionEmail = session?.customer_details?.email || null;
+  const invoiceEmail = invoice?.customer_email || null;
+  const customerEmail = stripeCustomer?.email || null;
+
+  const resolvedName =
+    sessionName || invoiceName || customerName || fallbackName || "Licitera felhasználó";
+
+  const resolvedEmail =
+    sessionEmail || invoiceEmail || customerEmail || fallbackEmail || null;
+
+  const postalCode = resolvedAddress?.postal_code?.trim() || "";
+  const city = resolvedAddress?.city?.trim() || "";
+  const addressLine = buildAddressLine(resolvedAddress);
+  const country = resolvedAddress?.country?.trim() || "HU";
+
+  if (!resolvedEmail) {
+    throw new Error("Hiányzik a vevő email címe a számlázáshoz.");
+  }
+
+  if (!postalCode || !city || !addressLine) {
+    throw new Error("Hiányzik a vevő számlázási címének valamely kötelező eleme a Stripe adatokból.");
+  }
+
+  return {
+    name: resolvedName,
+    email: resolvedEmail,
+    postalCode,
+    city,
+    addressLine,
+    country,
+  };
 }
 
 async function syncSubscriptionProfileFromCheckout(session: Stripe.Checkout.Session) {
@@ -205,18 +291,27 @@ async function handleBalanceTopupCheckoutCompleted(
     throw new Error("A felhasználó profilja nem található az egyenlegrendezés számlázásához.");
   }
 
-  const buyerEmail = session.customer_details?.email || profile.email || null;
-  const buyerName = session.customer_details?.name || profile.full_name || "Licitera felhasználó";
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer?.id || profile.stripe_customer_id;
 
-  if (!buyerEmail) {
-    throw new Error("Hiányzik a vevő email címe az egyenlegrendezés számlázásához.");
-  }
+  const buyer = await resolveInvoiceAddressData({
+    session,
+    customerId,
+    fallbackName: profile.full_name,
+    fallbackEmail: profile.email,
+  });
 
   await createSzamlazzHuInvoice({
-    name: buyerName,
-    email: buyerEmail,
+    name: buyer.name,
+    email: buyer.email,
     amount: amountHuf,
     description: "Licitera egyenlegrendezés",
+    postalCode: buyer.postalCode,
+    city: buyer.city,
+    addressLine: buyer.addressLine,
+    country: buyer.country,
   });
 
   await saveInvoiceLog({
@@ -237,10 +332,7 @@ async function handleBalanceTopupCheckoutCompleted(
 function getPriceIdFromInvoiceLines(invoice: Stripe.Invoice): string | null {
   for (const line of invoice.lines.data) {
     const anyLine = line as any;
-    const priceId =
-      anyLine?.pricing?.price_details?.price ||
-      anyLine?.price?.id ||
-      null;
+    const priceId = anyLine?.pricing?.price_details?.price || anyLine?.price?.id || null;
 
     if (priceId) {
       return priceId;
@@ -250,10 +342,7 @@ function getPriceIdFromInvoiceLines(invoice: Stripe.Invoice): string | null {
   return null;
 }
 
-async function handlePaidSubscriptionInvoice(
-  invoice: Stripe.Invoice,
-  stripeEventId: string
-) {
+async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice, stripeEventId: string) {
   const customerId =
     typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
 
@@ -307,13 +396,6 @@ async function handlePaidSubscriptionInvoice(
     return;
   }
 
-  const buyerEmail = invoice.customer_email || profile.email || null;
-  const buyerName = invoice.customer_name || profile.full_name || "Licitera felhasználó";
-
-  if (!buyerEmail) {
-    throw new Error("Hiányzik a vevő email címe a subscription számlázásához.");
-  }
-
   const description =
     tier === "pro"
       ? "Licitera Pro előfizetés"
@@ -321,11 +403,22 @@ async function handlePaidSubscriptionInvoice(
       ? "Licitera Standard előfizetés"
       : "Licitera előfizetés";
 
+  const buyer = await resolveInvoiceAddressData({
+    invoice,
+    customerId,
+    fallbackName: profile.full_name,
+    fallbackEmail: profile.email,
+  });
+
   await createSzamlazzHuInvoice({
-    name: buyerName,
-    email: buyerEmail,
+    name: buyer.name,
+    email: buyer.email,
     amount: amountHuf,
     description,
+    postalCode: buyer.postalCode,
+    city: buyer.city,
+    addressLine: buyer.addressLine,
+    country: buyer.country,
   });
 
   await saveInvoiceLog({

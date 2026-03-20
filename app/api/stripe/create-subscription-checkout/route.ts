@@ -71,15 +71,14 @@ export async function POST(req: NextRequest) {
     }
 
     const currentTier = ((profile as any).subscription_tier ?? "free") as
-  | "free"
-  | "standard"
-  | "pro";
-const currentSubscriptionId = (profile as any).stripe_subscription_id as string | null;
+      | "free"
+      | "standard"
+      | "pro";
+    const currentSubscriptionId = (profile as any).stripe_subscription_id as string | null;
 
-const hasExistingPaidSubscription =
-  currentTier !== "free" || !!currentSubscriptionId;
+    const hasExistingPaidSubscription = currentTier !== "free" || !!currentSubscriptionId;
 
-if (hasExistingPaidSubscription) {
+    if (hasExistingPaidSubscription) {
       return NextResponse.json(
         {
           error:
@@ -98,7 +97,7 @@ if (hasExistingPaidSubscription) {
         if ((existingCustomer as any)?.deleted) {
           stripeCustomerId = null;
         }
-      } catch (error: any) {
+      } catch {
         stripeCustomerId = null;
       }
     }
@@ -128,6 +127,11 @@ if (hasExistingPaidSubscription) {
       {
         mode: "subscription",
         customer: stripeCustomerId,
+        billing_address_collection: "required",
+        customer_update: {
+          address: "auto",
+          name: "auto",
+        },
         line_items: [
           {
             price: priceId,

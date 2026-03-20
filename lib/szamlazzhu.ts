@@ -18,11 +18,19 @@ export async function createSzamlazzHuInvoice({
   email,
   amount,
   description,
+  postalCode,
+  city,
+  addressLine,
+  country = "HU",
 }: {
   name: string;
   email: string;
   amount: number;
   description: string;
+  postalCode: string;
+  city: string;
+  addressLine: string;
+  country?: string;
 }) {
   const agentKey = process.env.SZAMLAZZHU_AGENT_KEY;
   const isTest = process.env.SZAMLAZZHU_TEST_MODE === "true";
@@ -32,8 +40,16 @@ export async function createSzamlazzHuInvoice({
     throw new Error("Hiányzik a SZAMLAZZHU_AGENT_KEY env.");
   }
 
+  if (!postalCode || !city || !addressLine) {
+    throw new Error("Hiányzik a számlázási cím valamely kötelező eleme.");
+  }
+
+  const netto = Number(amount);
+  const afa = 0;
+  const brutto = Number(amount);
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<xmlszamla>
+<xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla">
   <beallitasok>
     <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
     <eszamla>true</eszamla>
@@ -57,9 +73,10 @@ export async function createSzamlazzHuInvoice({
 
   <vevo>
     <nev>${escapeXml(name)}</nev>
-    <irsz>2700</irsz>
-    <telepules>Cegléd</telepules>
-    <cim>Ismeretlen cím</cim>
+    <orszag>${escapeXml(country)}</orszag>
+    <irsz>${escapeXml(postalCode)}</irsz>
+    <telepules>${escapeXml(city)}</telepules>
+    <cim>${escapeXml(addressLine)}</cim>
     <email>${escapeXml(email)}</email>
     <sendEmail>true</sendEmail>
   </vevo>
@@ -69,8 +86,11 @@ export async function createSzamlazzHuInvoice({
       <megnevezes>${escapeXml(description)}</megnevezes>
       <mennyiseg>1</mennyiseg>
       <mennyisegiEgyseg>db</mennyisegiEgyseg>
-      <nettoEgysegar>${amount}</nettoEgysegar>
+      <nettoEgysegar>${netto}</nettoEgysegar>
       <afakulcs>AAM</afakulcs>
+      <nettoErtek>${netto}</nettoErtek>
+      <afaErtek>${afa}</afaErtek>
+      <bruttoErtek>${brutto}</bruttoErtek>
     </tetel>
   </tetelek>
 </xmlszamla>`;
