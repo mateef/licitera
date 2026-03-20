@@ -13,6 +13,47 @@ function getTagValue(xml: string, tagName: string) {
   return match?.[1]?.trim() ?? null;
 }
 
+function getTodayDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function assertSuccessfulSzamlazzResponse(raw: string) {
+  const success = getTagValue(raw, "sikeres");
+  const errorCode = getTagValue(raw, "hibakod");
+  const errorMessage = getTagValue(raw, "hibauzenet");
+
+  if (success !== "true") {
+    throw new Error(
+      `Számlázz.hu hiba${errorCode ? ` (${errorCode})` : ""}: ${
+        errorMessage || "Ismeretlen számlázási hiba."
+      }`
+    );
+  }
+}
+
+async function postXmlFileToSzamlazz(fieldName: string, xml: string, filename: string) {
+  const formData = new FormData();
+  const xmlBlob = new Blob([xml], { type: "text/xml" });
+
+  formData.append(fieldName, xmlBlob, filename);
+
+  const res = await fetch("https://www.szamlazz.hu/szamla/", {
+    method: "POST",
+    body: formData,
+  });
+
+  const raw = await res.text();
+
+  console.log("SZAMLAZZ STATUS:", res.status);
+  console.log("SZAMLAZZ RAW RESPONSE:", raw);
+
+  if (!res.ok) {
+    throw new Error(`Számlázz.hu HTTP hiba: ${res.status}`);
+  }
+
+  return raw;
+}
+
 export async function createSzamlazzHuInvoice({
   name,
   email,
@@ -33,8 +74,7 @@ export async function createSzamlazzHuInvoice({
   country?: string;
 }) {
   const agentKey = process.env.SZAMLAZZHU_AGENT_KEY;
-  const isTest = process.env.SZAMLAZZHU_TEST_MODE === "true";
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayDate();
 
   if (!agentKey) {
     throw new Error("Hiányzik a SZAMLAZZHU_AGENT_KEY env.");
@@ -94,40 +134,69 @@ export async function createSzamlazzHuInvoice({
   </tetelek>
 </xmlszamla>`;
 
-  const formData = new FormData();
-  const xmlBlob = new Blob([xml], { type: "text/xml" });
+  const raw = await postXmlFileToSzamlazz(
+    "action-xmlagentxmlfile",
+    xml,
+    "invoice.xml"
+  );
 
-  formData.append("action-xmlagentxmlfile", xmlBlob, "invoice.xml");
+  assertSuccessfulSzamlazzResponse(raw);
 
-  const res = await fetch("https://www.szamlazz.hu/szamla/", {
-    method: "POST",
-    body: formData,
-  });
-
-  const raw = await res.text();
-
-  console.log("SZAMLAZZ STATUS:", res.status);
-  console.log("SZAMLAZZ RAW RESPONSE:", raw);
-
-  if (!res.ok) {
-    throw new Error(`Számlázz.hu HTTP hiba: ${res.status}`);
-  }
-
-  const success = getTagValue(raw, "sikeres");
-  const errorCode = getTagValue(raw, "hibakod");
-  const errorMessage = getTagValue(raw, "hibauzenet");
   const invoiceNumber = getTagValue(raw, "szamlaszam");
 
-  if (success !== "true") {
-    throw new Error(
-      `Számlázz.hu hiba${errorCode ? ` (${errorCode})` : ""}: ${
-        errorMessage || "Ismeretlen számlázási hiba."
-      }`
-    );
+  if (!invoiceNumber) {
+    throw new Error("A számla létrejött, de nem érkezett vissza számlaszám.");
   }
 
   return {
     invoiceNumber,
+    rawResponse: raw,
+  };
+}
+
+export async function registerSzamlazzHuPayment({
+  invoiceNumber,
+  amount,
+}: {
+  invoiceNumber: string;
+  amount: number;
+}) {
+  const agentKey = process.env.SZAMLAZZHU_AGENT_KEY;
+
+  if (!agentKey) {
+    throw new Error("Hiányzik a SZAMLAZZHU_AGENT_KEY env.");
+  }
+
+  if (!invoiceNumber) {
+    throw new Error("Hiányzik a számlaszám a befizetés rögzítéséhez.");
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<xmlszamlakifiz xmlns="http://www.szamlazz.hu/xmlszamlakifiz">
+  <beallitasok>
+    <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
+    <szamlaszam>${escapeXml(invoiceNumber)}</szamlaszam>
+    <additiv>false</additiv>
+    <valaszVerzio>2</valaszVerzio>
+  </beallitasok>
+
+  <kifizetes>
+    <datum>${today}</datum>
+    <jogcim>bankkártya</jogcim>
+    <osszeg>${Number(amount)}</osszeg>
+    <leiras>Stripe fizetés automatikus rögzítése</leiras>
+  </kifizetes>
+</xmlszamlakifiz>`;
+
+  const raw = await postXmlFileToSzamlazz(
+    "action-szamla_agent_kifiz",
+    xml,
+    "invoice-payment.xml"
+  );
+
+  return {
     rawResponse: raw,
   };
 }

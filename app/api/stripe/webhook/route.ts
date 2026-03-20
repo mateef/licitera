@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
-import { createSzamlazzHuInvoice } from "@/lib/szamlazzhu";
+import {
+  createSzamlazzHuInvoice,
+  registerSzamlazzHuPayment,
+} from "@/lib/szamlazzhu";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -128,7 +131,7 @@ async function getStripeCustomer(customerId: string | null | undefined) {
     }
 
     return customer as Stripe.Customer;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -303,7 +306,7 @@ async function handleBalanceTopupCheckoutCompleted(
     fallbackEmail: profile.email,
   });
 
-  await createSzamlazzHuInvoice({
+  const invoiceResult = await createSzamlazzHuInvoice({
     name: buyer.name,
     email: buyer.email,
     amount: amountHuf,
@@ -314,6 +317,11 @@ async function handleBalanceTopupCheckoutCompleted(
     country: buyer.country,
   });
 
+  await registerSzamlazzHuPayment({
+    invoiceNumber: invoiceResult.invoiceNumber,
+    amount: amountHuf,
+  });
+
   await saveInvoiceLog({
     userId,
     stripeEventId,
@@ -322,10 +330,11 @@ async function handleBalanceTopupCheckoutCompleted(
     amountHuf,
   });
 
-  console.log("BALANCE TOPUP SUCCESS + INVOICE SENT", {
+  console.log("BALANCE TOPUP SUCCESS + INVOICE SENT + PAYMENT REGISTERED", {
     userId,
     sessionId: session.id,
     amountHuf,
+    invoiceNumber: invoiceResult.invoiceNumber,
   });
 }
 
@@ -410,7 +419,7 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice, stripeEven
     fallbackEmail: profile.email,
   });
 
-  await createSzamlazzHuInvoice({
+  const invoiceResult = await createSzamlazzHuInvoice({
     name: buyer.name,
     email: buyer.email,
     amount: amountHuf,
@@ -421,6 +430,11 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice, stripeEven
     country: buyer.country,
   });
 
+  await registerSzamlazzHuPayment({
+    invoiceNumber: invoiceResult.invoiceNumber,
+    amount: amountHuf,
+  });
+
   await saveInvoiceLog({
     userId: profile.id,
     stripeEventId,
@@ -429,11 +443,12 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice, stripeEven
     amountHuf,
   });
 
-  console.log("SUBSCRIPTION INVOICE SUCCESS + INVOICE SENT", {
+  console.log("SUBSCRIPTION INVOICE SUCCESS + INVOICE SENT + PAYMENT REGISTERED", {
     userId: profile.id,
     invoiceId: invoice.id,
     invoiceType,
     amountHuf,
+    invoiceNumber: invoiceResult.invoiceNumber,
   });
 }
 
