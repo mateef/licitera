@@ -71,17 +71,15 @@ export async function POST(req: NextRequest) {
     }
 
     const currentTier = ((profile as any).subscription_tier ?? "free") as
-      | "free"
-      | "standard"
-      | "pro";
-    const currentStatus = String((profile as any).subscription_status ?? "");
-    const currentSubscriptionId = (profile as any).stripe_subscription_id as string | null;
+  | "free"
+  | "standard"
+  | "pro";
+const currentSubscriptionId = (profile as any).stripe_subscription_id as string | null;
 
-    const hasPaidSubscription =
-      (currentTier === "standard" || currentTier === "pro") &&
-      ["active", "trialing", "past_due", "unpaid", "incomplete"].includes(currentStatus);
+const hasExistingPaidSubscription =
+  currentTier !== "free" || !!currentSubscriptionId;
 
-    if (hasPaidSubscription || currentSubscriptionId) {
+if (hasExistingPaidSubscription) {
       return NextResponse.json(
         {
           error:
