@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 type NotificationRow = {
@@ -57,6 +57,8 @@ export default function NotificationsPage() {
           item.id === id ? { ...item, is_read: true } : item
         )
       );
+
+      window.dispatchEvent(new CustomEvent("notifications-updated"));
     }
   }
 
@@ -73,12 +75,37 @@ export default function NotificationsPage() {
 
     if (!error) {
       setItems((prev) => prev.map((item) => ({ ...item, is_read: true })));
+      window.dispatchEvent(new CustomEvent("notifications-updated"));
     }
   }
 
   useEffect(() => {
     loadNotifications();
   }, []);
+
+  useEffect(() => {
+    if (!uid) return;
+
+    const channel = supabase
+      .channel(`notifications-page-${uid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${uid}`,
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [uid]);
 
   const unreadCount = useMemo(
     () => items.filter((x) => !x.is_read).length,
@@ -128,7 +155,9 @@ export default function NotificationsPage() {
               key={item.id}
               href={item.link || "/notifications"}
               onClick={() => {
-                if (!item.is_read) markAsRead(item.id);
+                if (!item.is_read) {
+                  markAsRead(item.id);
+                }
               }}
               className={`block rounded-[1.25rem] border p-4 transition hover:shadow-sm ${
                 item.is_read

@@ -3,17 +3,13 @@
 import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 type NotificationRow = {
   id: string;
@@ -41,17 +37,17 @@ export function NotificationsBell() {
       return;
     }
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("notifications")
       .select("id,title,message,link,is_read,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .limit(5);
+      .limit(6);
 
-    if (!error) {
-      setItems((data ?? []) as NotificationRow[]);
-      setUnreadCount((data ?? []).filter((x: any) => !x.is_read).length);
-    }
+    const list = (data ?? []) as NotificationRow[];
+
+    setItems(list);
+    setUnreadCount(list.filter((x) => !x.is_read).length);
   }
 
   async function markAsRead(id: string) {
@@ -67,6 +63,8 @@ export function NotificationsBell() {
         )
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
+
+      window.dispatchEvent(new CustomEvent("notifications-updated"));
     }
   }
 
@@ -87,7 +85,12 @@ export function NotificationsBell() {
       .channel(`notifications-${uid}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "notifications" },
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${uid}`,
+        },
         () => {
           loadNotifications();
         }
@@ -99,79 +102,115 @@ export function NotificationsBell() {
     };
   }, [uid]);
 
+  useEffect(() => {
+    function handleNotificationsUpdated() {
+      loadNotifications();
+    }
+
+    window.addEventListener("notifications-updated", handleNotificationsUpdated);
+
+    return () => {
+      window.removeEventListener("notifications-updated", handleNotificationsUpdated);
+    };
+  }, []);
+
   if (!uid) return null;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="relative h-11 rounded-full px-3">
-          <Bell className="h-5 w-5" />
-          {unreadCount > 0 ? (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+        <button className="relative flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition hover:bg-slate-50 active:scale-[0.96]">
+          <Bell className="h-5 w-5 text-slate-700" />
+
+          {unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
-          ) : null}
-        </Button>
+          )}
+        </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-[360px]">
-        <DropdownMenuLabel>Értesítések</DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <DropdownMenuContent
+        align="end"
+        className="w-[360px] rounded-2xl border border-slate-200 bg-white p-0 shadow-xl"
+      >
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <span className="text-sm font-semibold text-slate-800">
+            Értesítések
+          </span>
 
-        {items.length === 0 ? (
-          <div className="px-3 py-4 text-sm text-muted-foreground">
-            Nincs új értesítésed.
-          </div>
-        ) : (
-          items.map((item) => (
-            <DropdownMenuItem
-              key={item.id}
-              className="cursor-pointer items-start py-3"
-              onClick={async () => {
-                if (!item.is_read) {
-                  await markAsRead(item.id);
-                }
+          {unreadCount > 0 && (
+            <span className="text-xs text-slate-500">
+              {unreadCount} új
+            </span>
+          )}
+        </div>
 
-                if (item.link) {
-                  router.push(item.link);
-                } else {
-                  router.push("/notifications");
-                }
-              }}
-            >
-              <div className="flex w-full gap-3">
+        <div className="max-h-[420px] overflow-y-auto">
+          {items.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-slate-500">
+              Nincs új értesítésed
+            </div>
+          ) : (
+            items.map((item) => (
+              <button
+                key={item.id}
+                onClick={async () => {
+                  if (!item.is_read) {
+                    await markAsRead(item.id);
+                  }
+
+                  router.push(item.link || "/notifications");
+                }}
+                className={cn(
+                  "group flex w-full items-start gap-3 px-4 py-3 text-left transition",
+                  "hover:bg-slate-50 active:bg-slate-100",
+                  !item.is_read && "bg-blue-50/40"
+                )}
+              >
                 <div className="pt-1">
-                  {!item.is_read ? (
-                    <span className="block h-2.5 w-2.5 rounded-full bg-blue-500" />
-                  ) : (
-                    <span className="block h-2.5 w-2.5 rounded-full bg-slate-200" />
-                  )}
+                  <span
+                    className={cn(
+                      "block h-2.5 w-2.5 rounded-full",
+                      item.is_read ? "bg-slate-300" : "bg-blue-500"
+                    )}
+                  />
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="truncate font-medium">{item.title}</div>
-                    {!item.is_read ? <Badge variant="secondary">Új</Badge> : null}
+                    <div className="truncate text-sm font-semibold text-slate-800">
+                      {item.title}
+                    </div>
+
+                    {!item.is_read && (
+                      <span className="text-[10px] font-bold text-blue-600">
+                        ÚJ
+                      </span>
+                    )}
                   </div>
-                  <div className="line-clamp-2 text-xs text-muted-foreground">
+
+                  <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">
                     {item.message}
                   </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
+
+                  <div className="mt-1 text-[11px] text-slate-400">
                     {new Date(item.created_at).toLocaleString()}
                   </div>
                 </div>
-              </div>
-            </DropdownMenuItem>
-          ))
-        )}
+              </button>
+            ))
+          )}
+        </div>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer justify-center font-medium"
-          onClick={() => router.push("/notifications")}
-        >
-          Továbbiak
-        </DropdownMenuItem>
+        <div className="border-t p-2">
+          <button
+            onClick={() => router.push("/notifications")}
+            className="w-full rounded-xl py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Összes értesítés megtekintése
+          </button>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

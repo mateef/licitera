@@ -14,6 +14,17 @@ import {
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { NotificationsBell } from "@/components/notifications-bell";
+import {
+  Search,
+  ChevronDown,
+  LayoutGrid,
+  User,
+  Gavel,
+  Wallet,
+  Heart,
+  Shield,
+  LogOut,
+} from "lucide-react";
 
 type ProfileRow = {
   full_name: string | null;
@@ -76,9 +87,7 @@ export function SiteHeader() {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const raw = (data as any)?.balance_amount ?? 0;
-
-    // 💡 NEM engedjük +ba
+    const raw = Number((data as any)?.balance_amount ?? 0);
     setBalance(Math.min(0, raw));
   }
 
@@ -125,8 +134,11 @@ export function SiteHeader() {
     const q = search.trim();
     const params = new URLSearchParams(searchParams.toString());
 
-    if (q) params.set("q", q);
-    else params.delete("q");
+    if (q) {
+      params.set("q", q);
+    } else {
+      params.delete("q");
+    }
 
     router.push(`/listings?${params.toString()}`);
   }
@@ -139,157 +151,245 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-white/70 backdrop-blur-xl">
-      {/* TOP BAR */}
-      <div className="mx-auto flex h-9 max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground">
-        <div>
-          {sessionUserId ? (
-            <span className="text-foreground">
-              Üdv{displayName ? `, ${displayName}` : ""}!
-            </span>
-          ) : (
-            <a className="hover:underline" href="/login">
-              A belépéshez kattints ide
-            </a>
-          )}
-        </div>
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/85 backdrop-blur-2xl">
+      {/* TOP INFO BAR */}
+      <div className="mx-auto max-w-6xl px-4">
+        <div className="flex min-h-11 items-center justify-between gap-3 py-2 text-xs text-slate-500">
+          <div className="min-w-0 truncate">
+            {sessionUserId ? (
+              <span className="text-slate-700">
+                Üdv{displayName ? `, ${displayName}` : ""}!
+              </span>
+            ) : (
+              <button
+                onClick={() => router.push("/login")}
+                className="font-medium text-slate-700 transition hover:text-slate-900"
+              >
+                Belépés / regisztráció
+              </button>
+            )}
+          </div>
 
-        <div className="flex items-center gap-3">
-          {sessionUserId && balance !== null && (
-            <button
-              onClick={() => router.push("/billing")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                balance < 0
-                  ? "bg-red-100 text-red-700 hover:bg-red-200"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              {balance < 0 ? "⚠ " : ""}
-              {new Intl.NumberFormat("hu-HU").format(balance)} Ft
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {sessionUserId && balance !== null && (
+              <button
+                onClick={() => router.push("/billing")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  balance < 0
+                    ? "bg-red-100 text-red-700 hover:bg-red-200"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                {balance < 0 ? "⚠ " : ""}
+                {new Intl.NumberFormat("hu-HU").format(balance)} Ft
+              </button>
+            )}
 
-          {sessionUserId ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="text-xs hover:text-foreground">
-                  Profil ▼
-                </button>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent align="end">
-                {isAdmin && (
-                  <DropdownMenuItem onClick={() => router.push("/admin")}>
-                    Admin felület
-                  </DropdownMenuItem>
-                )}
-
-                <DropdownMenuItem onClick={() => router.push("/profile")}>
-                  Profil
-                </DropdownMenuItem>
-
-                <DropdownMenuItem onClick={() => router.push("/billing")}>
-                  Egyenleg & előfizetés
-                </DropdownMenuItem>
-
-                <DropdownMenuItem onClick={() => router.push("/my-listings")}>
-                  Saját aukciók
-                </DropdownMenuItem>
-
-                <DropdownMenuItem onClick={() => router.push("/watchlist")}>
-                  Figyelőlista
-                </DropdownMenuItem>
-
-                <DropdownMenuItem onClick={handleSignOut}>
-                  Kijelentkezés
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <>
-              <a className="hover:underline" href="/my-listings">
-                Saját aukciók
-              </a>
-              <a className="hover:underline" href="/create-listing">
-                Eladás
-              </a>
-            </>
-          )}
+            {!sessionUserId && (
+              <button
+                onClick={() => router.push("/create-listing")}
+                className="hidden rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 sm:inline-flex"
+              >
+                Eladás indítása
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       <Separator />
 
-      {/* MAIN HEADER */}
-      <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-3 px-4 py-2">
-        <button
-          onClick={() => router.push("/listings")}
-          className="text-2xl font-extrabold tracking-tight"
-        >
-          <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-pink-600 bg-clip-text text-transparent">
-            Licitera
-          </span>
-        </button>
+      {/* MAIN */}
+      <div className="mx-auto max-w-6xl px-4 py-3">
+        {/* ROW 1 */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/listings")}
+            className="group min-w-0 shrink-0 text-left"
+          >
+            <div className="text-[1.8rem] font-black leading-none tracking-tight sm:text-[2rem]">
+              <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-pink-600 bg-clip-text text-transparent">
+                Licitera
+              </span>
+            </div>
+            <div className="mt-0.5 hidden text-xs text-slate-500 sm:block">
+              Aukciók licitre
+            </div>
+          </button>
 
-        <div className="hidden text-xs text-muted-foreground md:block">
-          Aukciók
-          <br />
-          licitre
+          <div className="ml-auto flex items-center gap-2">
+            <div className="shrink-0">
+              <NotificationsBell />
+            </div>
+
+            {sessionUserId ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]">
+                    <User className="h-4 w-4" />
+                    <span className="max-w-[84px] truncate">
+                      {displayName || "Profil"}
+                    </span>
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end" className="w-64 rounded-2xl p-2">
+                  {isAdmin && (
+                    <DropdownMenuItem
+                      onClick={() => router.push("/admin")}
+                      className="rounded-xl py-3"
+                    >
+                      <Shield className="mr-2 h-4 w-4" />
+                      Admin felület
+                    </DropdownMenuItem>
+                  )}
+
+                  <DropdownMenuItem
+                    onClick={() => router.push("/profile")}
+                    className="rounded-xl py-3"
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Profil
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => router.push("/billing")}
+                    className="rounded-xl py-3"
+                  >
+                    <Wallet className="mr-2 h-4 w-4" />
+                    Egyenleg & előfizetés
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => router.push("/my-listings")}
+                    className="rounded-xl py-3"
+                  >
+                    <Gavel className="mr-2 h-4 w-4" />
+                    Saját aukciók
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => router.push("/watchlist")}
+                    className="rounded-xl py-3"
+                  >
+                    <Heart className="mr-2 h-4 w-4" />
+                    Figyelőlista
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={handleSignOut}
+                    className="rounded-xl py-3 text-red-600 focus:text-red-600"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Kijelentkezés
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                className="h-11 rounded-full px-4"
+                onClick={() => router.push("/login")}
+              >
+                Belépés
+              </Button>
+            )}
+
+            <Button
+              className="h-11 rounded-full px-4 shadow-sm"
+              onClick={() => router.push("/create-listing")}
+            >
+              <span className="sm:hidden">+ Eladás</span>
+              <span className="hidden sm:inline">+ Aukció</span>
+            </Button>
+          </div>
         </div>
 
-        <div className="ml-2 flex flex-1 items-center gap-2">
+        {/* ROW 2 */}
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
           <form
-            className="flex flex-1 items-center gap-2"
+            className="relative"
             onSubmit={(e) => {
               e.preventDefault();
               goSearch();
             }}
           >
             <Input
-              placeholder="Keress aukciót..."
-              className="h-11 rounded-full"
+              placeholder="Keress aukciót, kategóriát vagy kulcsszót..."
+              className="h-12 rounded-full border-slate-200 bg-white pl-5 pr-14 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-300"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <Button type="submit" className="h-11 rounded-full px-4">
-              🔎
-            </Button>
+            <button
+              type="submit"
+              aria-label="Keresés"
+              className="absolute right-1.5 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.97]"
+            >
+              <Search className="h-4 w-4" />
+            </button>
           </form>
 
-          {mounted && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="hidden h-11 rounded-full md:inline-flex">
-                  Kategóriák
-                </Button>
-              </DropdownMenuTrigger>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:justify-end">
+            <Button
+              variant="outline"
+              className="h-11 shrink-0 rounded-full border-slate-200 bg-white px-4 shadow-sm"
+              onClick={() => router.push("/listings")}
+            >
+              Összes aukció
+            </Button>
 
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => router.push("/listings")}>
-                  Összes kategória
-                </DropdownMenuItem>
+            {mounted && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]">
+                    <LayoutGrid className="h-4 w-4" />
+                    Kategóriák
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
 
-                {mainCategories.map((c) => (
+                <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto rounded-2xl p-2">
                   <DropdownMenuItem
-                    key={c.id}
-                    onClick={() => router.push(`/listings?category=${c.id}`)}
+                    onClick={() => router.push("/listings")}
+                    className="rounded-xl py-3"
                   >
-                    {c.name}
+                    Összes kategória
                   </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
 
-          <NotificationsBell />
-
-          <Button
-            className="h-11 rounded-full px-4"
-            onClick={() => router.push("/create-listing")}
-          >
-            + Aukció
-          </Button>
+                  {mainCategories.map((c) => (
+                    <DropdownMenuItem
+                      key={c.id}
+                      onClick={() => router.push(`/listings?category=${c.id}`)}
+                      className="rounded-xl py-3"
+                    >
+                      {c.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
+
+        {/* MOBILE QUICK LINKS FOR GUESTS */}
+        {!sessionUserId && (
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 sm:hidden">
+            <Button
+              variant="outline"
+              className="h-10 shrink-0 rounded-full"
+              onClick={() => router.push("/my-listings")}
+            >
+              Saját aukciók
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 shrink-0 rounded-full"
+              onClick={() => router.push("/watchlist")}
+            >
+              Figyelőlista
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   );
