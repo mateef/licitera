@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Crown, Wallet, CheckCircle2, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-export const dynamic = "force-dynamic";
+import { Suspense } from "react";
 
 type SubscriptionTier = "free" | "standard" | "pro";
 
@@ -59,7 +59,7 @@ const SUBSCRIPTION_PLANS: {
   },
 ];
 
-export default function BillingPage() {
+function BillingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -747,5 +747,12 @@ export default function BillingPage() {
         </p>
       </div>
     </div>
+  );
+}
+export default function BillingPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-5xl p-6">Betöltés...</div>}>
+      <BillingPageContent />
+    </Suspense>
   );
 }
