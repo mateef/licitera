@@ -37,7 +37,6 @@ export async function createSzamlazzHuInvoice({
   <beallitasok>
     <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
     <eszamla>true</eszamla>
-    <emailKuldes>true</emailKuldes>
     <szamlaLetoltes>true</szamlaLetoltes>
     <valaszVerzio>2</valaszVerzio>
     <teszt>${isTest ? "true" : "false"}</teszt>
@@ -58,7 +57,11 @@ export async function createSzamlazzHuInvoice({
 
   <vevo>
     <nev>${escapeXml(name)}</nev>
+    <irsz>2700</irsz>
+    <telepules>Cegléd</telepules>
+    <cim>Ismeretlen cím</cim>
     <email>${escapeXml(email)}</email>
+    <sendEmail>true</sendEmail>
   </vevo>
 
   <tetelek>
@@ -72,12 +75,14 @@ export async function createSzamlazzHuInvoice({
   </tetelek>
 </xmlszamla>`;
 
+  const formData = new FormData();
+  const xmlBlob = new Blob([xml], { type: "text/xml" });
+
+  formData.append("action-xmlagentxmlfile", xmlBlob, "invoice.xml");
+
   const res = await fetch("https://www.szamlazz.hu/szamla/", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/xml",
-    },
-    body: xml,
+    body: formData,
   });
 
   const raw = await res.text();
