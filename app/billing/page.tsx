@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Crown, Wallet, CheckCircle2, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+export const dynamic = "force-dynamic";
 
 type SubscriptionTier = "free" | "standard" | "pro";
 
