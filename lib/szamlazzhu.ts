@@ -55,7 +55,6 @@ export async function createSzamlazzHuInvoice({
     <eszamla>true</eszamla>
     <szamlaLetoltes>true</szamlaLetoltes>
     <valaszVerzio>2</valaszVerzio>
-    <teszt>${isTest ? "true" : "false"}</teszt>
   </beallitasok>
 
   <fejlec>
