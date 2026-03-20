@@ -54,17 +54,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Hiányzik a Stripe price ID." }, { status: 500 });
     }
 
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id,email,full_name,stripe_customer_id")
+      .select(
+        "id,email,full_name,stripe_customer_id,stripe_subscription_id,subscription_tier,subscription_status"
+      )
       .eq("id", user.id)
       .maybeSingle();
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
 
     if (!profile) {
       return NextResponse.json({ error: "A profil nem található." }, { status: 404 });
     }
 
+    const currentTier = ((profile as any).subscription_tier ?? "free") as
+      | "free"
+      | "standard"
+      | "pro";
+    const currentStatus = String((profile as any).subscription_status ?? "");
+    const currentSubscriptionId = (profile as any).stripe_subscription_id as string | null;
+
+    const hasPaidSubscription =
+      (currentTier === "standard" || currentTier === "pro") &&
+      ["active", "trialing", "past_due", "unpaid", "incomplete"].includes(currentStatus);
+
+    if (hasPaidSubscription || currentSubscriptionId) {
+      return NextResponse.json(
+        {
+          error:
+            "Már van aktív vagy létező előfizetésed. A csomagváltást az előfizetéskezelőben tudod intézni.",
+        },
+        { status: 400 }
+      );
+    }
+
     let stripeCustomerId = (profile as any).stripe_customer_id as string | null;
+
+    if (stripeCustomerId) {
+      try {
+        const existingCustomer = await stripe.customers.retrieve(stripeCustomerId);
+
+        if ((existingCustomer as any)?.deleted) {
+          stripeCustomerId = null;
+        }
+      } catch (error: any) {
+        stripeCustomerId = null;
+      }
+    }
 
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
@@ -77,28 +116,37 @@ export async function POST(req: NextRequest) {
 
       stripeCustomerId = customer.id;
 
-      await supabaseAdmin
+      const { error: customerUpdateError } = await supabaseAdmin
         .from("profiles")
         .update({ stripe_customer_id: stripeCustomerId })
         .eq("id", user.id);
+
+      if (customerUpdateError) {
+        return NextResponse.json({ error: customerUpdateError.message }, { status: 500 });
+      }
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: stripeCustomerId,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "subscription",
+        customer: stripeCustomerId,
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?stripe=success`,
+        cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?stripe=cancel`,
+        metadata: {
+          user_id: user.id,
+          tier,
         },
-      ],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/profile?stripe=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/profile?stripe=cancel`,
-      metadata: {
-        user_id: user.id,
-        tier,
       },
-    });
+      {
+        idempotencyKey: `subscription-checkout:${user.id}:${tier}`,
+      }
+    );
 
     return NextResponse.json({ url: session.url });
   } catch (error: any) {
