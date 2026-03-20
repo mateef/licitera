@@ -3,11 +3,384 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
+import { createSzamlazzHuInvoice } from "@/lib/szamlazzhu";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+function toHufAmount(stripeAmount: number | null | undefined) {
+  if (!stripeAmount) return 0;
+  return Math.round(Number(stripeAmount)) / 100;
+}
+
+function getTierFromPriceId(priceId: string | null | undefined): "free" | "standard" | "pro" {
+  if (priceId === process.env.STRIPE_STANDARD_PRICE_ID) return "standard";
+  if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
+  return "free";
+}
+
+async function hasExistingInvoice(stripeObjectId: string, invoiceType: string) {
+  const { data, error } = await supabaseAdmin
+    .from("billing_invoices")
+    .select("id")
+    .eq("stripe_object_id", stripeObjectId)
+    .eq("invoice_type", invoiceType)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return !!data;
+}
+
+async function saveInvoiceLog({
+  userId,
+  stripeEventId,
+  stripeObjectId,
+  invoiceType,
+  amountHuf,
+}: {
+  userId: string;
+  stripeEventId: string;
+  stripeObjectId: string;
+  invoiceType: string;
+  amountHuf: number;
+}) {
+  const { error } = await supabaseAdmin.from("billing_invoices").insert({
+    user_id: userId,
+    stripe_event_id: stripeEventId,
+    stripe_object_id: stripeObjectId,
+    invoice_type: invoiceType,
+    amount_huf: amountHuf,
+    provider: "szamlazz_hu",
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function getProfileByUserId(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, full_name, stripe_customer_id, subscription_tier")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    stripe_customer_id: string | null;
+    subscription_tier: "free" | "standard" | "pro" | null;
+  } | null;
+}
+
+async function getProfileByCustomerId(customerId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, full_name, stripe_customer_id, subscription_tier")
+    .eq("stripe_customer_id", customerId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    stripe_customer_id: string | null;
+    subscription_tier: "free" | "standard" | "pro" | null;
+  } | null;
+}
+
+async function syncSubscriptionProfileFromCheckout(session: Stripe.Checkout.Session) {
+  if (session.mode !== "subscription" || !session.customer || !session.subscription) {
+    return;
+  }
+
+  const metadata = session.metadata || {};
+  const userId = metadata.user_id;
+
+  if (!userId) {
+    throw new Error("Hiányzó user_id a subscription checkout metadata-ban.");
+  }
+
+  const customerId =
+    typeof session.customer === "string" ? session.customer : session.customer.id;
+
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription.id;
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  const priceId = subscription.items.data[0]?.price?.id ?? null;
+  const tier = getTierFromPriceId(priceId);
+
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscription.id,
+      subscription_tier: tier,
+      subscription_status: subscription.status,
+      subscription_current_period_end:
+        subscription.items.data[0]?.current_period_end
+          ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
+          : null,
+    })
+    .eq("id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  console.log("SUBSCRIPTION PROFILE UPDATED FROM CHECKOUT", {
+    userId,
+    customerId,
+    subscriptionId: subscription.id,
+    tier,
+    status: subscription.status,
+  });
+}
+
+async function handleBalanceTopupCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+  stripeEventId: string
+) {
+  const metadata = session.metadata || {};
+
+  if (session.mode !== "payment" || metadata.type !== "balance_topup") {
+    return;
+  }
+
+  console.log("BALANCE TOPUP WEBHOOK START", {
+    sessionId: session.id,
+    metadata,
+  });
+
+  const userId = metadata.user_id;
+  const amountHuf = Number(metadata.amount_huf ?? "0");
+
+  if (!userId || !Number.isFinite(amountHuf) || amountHuf <= 0) {
+    throw new Error("Hibás balance topup metadata.");
+  }
+
+  const invoiceType = "balance_topup";
+  const alreadyProcessed = await hasExistingInvoice(session.id, invoiceType);
+
+  if (alreadyProcessed) {
+    console.log("BALANCE TOPUP ALREADY PROCESSED", {
+      sessionId: session.id,
+      userId,
+    });
+    return;
+  }
+
+  const { error: ledgerError } = await supabaseAdmin.from("billing_ledger").insert({
+    user_id: userId,
+    entry_type: "balance_topup",
+    amount: amountHuf,
+    description: `Stripe egyenlegrendezés (${session.id})`,
+  });
+
+  if (ledgerError) {
+    throw new Error(ledgerError.message);
+  }
+
+  const profile = await getProfileByUserId(userId);
+
+  if (!profile) {
+    throw new Error("A felhasználó profilja nem található az egyenlegrendezés számlázásához.");
+  }
+
+  const buyerEmail = session.customer_details?.email || profile.email || null;
+  const buyerName = session.customer_details?.name || profile.full_name || "Licitera felhasználó";
+
+  if (!buyerEmail) {
+    throw new Error("Hiányzik a vevő email címe az egyenlegrendezés számlázásához.");
+  }
+
+  await createSzamlazzHuInvoice({
+    name: buyerName,
+    email: buyerEmail,
+    amount: amountHuf,
+    description: "Licitera egyenlegrendezés",
+  });
+
+  await saveInvoiceLog({
+    userId,
+    stripeEventId,
+    stripeObjectId: session.id,
+    invoiceType,
+    amountHuf,
+  });
+
+  console.log("BALANCE TOPUP SUCCESS + INVOICE SENT", {
+    userId,
+    sessionId: session.id,
+    amountHuf,
+  });
+}
+
+function getPriceIdFromInvoiceLines(invoice: Stripe.Invoice): string | null {
+  for (const line of invoice.lines.data) {
+    const anyLine = line as any;
+    const priceId =
+      anyLine?.pricing?.price_details?.price ||
+      anyLine?.price?.id ||
+      null;
+
+    if (priceId) {
+      return priceId;
+    }
+  }
+
+  return null;
+}
+
+async function handlePaidSubscriptionInvoice(
+  invoice: Stripe.Invoice,
+  stripeEventId: string
+) {
+  const customerId =
+    typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+
+  if (!customerId) {
+    throw new Error("Hiányzik a customer id az invoice.paid eseményből.");
+  }
+
+  const profile = await getProfileByCustomerId(customerId);
+
+  if (!profile) {
+    throw new Error("Nem található profil a Stripe customer alapján az invoice.paid eseménynél.");
+  }
+
+  const amountHuf = toHufAmount(invoice.amount_paid);
+
+  if (!amountHuf || amountHuf <= 0) {
+    console.log("SUBSCRIPTION INVOICE SKIPPED (ZERO OR NEGATIVE)", {
+      invoiceId: invoice.id,
+      amountPaid: invoice.amount_paid,
+    });
+    return;
+  }
+
+  let priceId = getPriceIdFromInvoiceLines(invoice);
+
+  if (!priceId) {
+    if (profile.subscription_tier === "standard") {
+      priceId = process.env.STRIPE_STANDARD_PRICE_ID ?? null;
+    } else if (profile.subscription_tier === "pro") {
+      priceId = process.env.STRIPE_PRO_PRICE_ID ?? null;
+    }
+  }
+
+  const tier = getTierFromPriceId(priceId);
+
+  const invoiceType =
+    tier === "pro"
+      ? "subscription_pro"
+      : tier === "standard"
+      ? "subscription_standard"
+      : "subscription_paid";
+
+  const alreadyProcessed = await hasExistingInvoice(invoice.id, invoiceType);
+
+  if (alreadyProcessed) {
+    console.log("SUBSCRIPTION INVOICE ALREADY PROCESSED", {
+      invoiceId: invoice.id,
+      userId: profile.id,
+      invoiceType,
+    });
+    return;
+  }
+
+  const buyerEmail = invoice.customer_email || profile.email || null;
+  const buyerName = invoice.customer_name || profile.full_name || "Licitera felhasználó";
+
+  if (!buyerEmail) {
+    throw new Error("Hiányzik a vevő email címe a subscription számlázásához.");
+  }
+
+  const description =
+    tier === "pro"
+      ? "Licitera Pro előfizetés"
+      : tier === "standard"
+      ? "Licitera Standard előfizetés"
+      : "Licitera előfizetés";
+
+  await createSzamlazzHuInvoice({
+    name: buyerName,
+    email: buyerEmail,
+    amount: amountHuf,
+    description,
+  });
+
+  await saveInvoiceLog({
+    userId: profile.id,
+    stripeEventId,
+    stripeObjectId: invoice.id,
+    invoiceType,
+    amountHuf,
+  });
+
+  console.log("SUBSCRIPTION INVOICE SUCCESS + INVOICE SENT", {
+    userId: profile.id,
+    invoiceId: invoice.id,
+    invoiceType,
+    amountHuf,
+  });
+}
+
+async function syncSubscriptionProfile(subscription: Stripe.Subscription) {
+  const customerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer.id;
+
+  const priceId = subscription.items.data[0]?.price?.id ?? null;
+
+  const tier =
+    subscription.status === "canceled" || subscription.status === "incomplete_expired"
+      ? "free"
+      : getTierFromPriceId(priceId);
+
+  const { error: profileUpdateError } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      stripe_subscription_id: subscription.status === "canceled" ? null : subscription.id,
+      subscription_tier: tier,
+      subscription_status: subscription.status,
+      subscription_current_period_end:
+        subscription.items.data[0]?.current_period_end
+          ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
+          : null,
+    })
+    .eq("stripe_customer_id", customerId);
+
+  if (profileUpdateError) {
+    throw new Error(profileUpdateError.message);
+  }
+
+  console.log("SUBSCRIPTION STATUS SYNCED", {
+    customerId,
+    subscriptionId: subscription.id,
+    status: subscription.status,
+    tier,
+  });
+}
 
 export async function POST(req: Request) {
   const body = await req.text();
@@ -37,141 +410,14 @@ export async function POST(req: Request) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
-      const metadata = session.metadata || {};
 
-      // 1) Subscription checkout kezelése
-      if (session.mode === "subscription" && session.customer && session.subscription) {
-        const customerId =
-          typeof session.customer === "string" ? session.customer : session.customer.id;
+      await syncSubscriptionProfileFromCheckout(session);
+      await handleBalanceTopupCheckoutCompleted(session, event.id);
+    }
 
-        const subscriptionId =
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription.id;
-
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
-        const priceId = subscription.items.data[0]?.price?.id;
-        const userId = metadata.user_id;
-
-        const tier =
-          priceId === process.env.STRIPE_STANDARD_PRICE_ID
-            ? "standard"
-            : priceId === process.env.STRIPE_PRO_PRICE_ID
-            ? "pro"
-            : "free";
-
-        if (!userId) {
-          return NextResponse.json(
-            { error: "Hiányzó user_id a subscription metadata-ban." },
-            { status: 400 }
-          );
-        }
-
-        const { error: profileUpdateError } = await supabaseAdmin
-          .from("profiles")
-          .update({
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscription.id,
-            subscription_tier: tier,
-            subscription_status: subscription.status,
-            subscription_current_period_end:
-              subscription.items.data[0]?.current_period_end
-                ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
-                : null,
-          })
-          .eq("id", userId);
-
-        if (profileUpdateError) {
-          return NextResponse.json(
-            { error: profileUpdateError.message },
-            { status: 500 }
-          );
-        }
-
-        console.log("SUBSCRIPTION PROFILE UPDATED", {
-          userId,
-          customerId,
-          subscriptionId: subscription.id,
-          tier,
-          status: subscription.status,
-        });
-      }
-
-      // 2) Balance topup checkout kezelése
-      if (session.mode === "payment" && metadata.type === "balance_topup") {
-  console.log("BALANCE TOPUP WEBHOOK START", {
-    sessionId: session.id,
-    metadata,
-  });
-
-  const userId = metadata.user_id;
-  const amountHuf = Number(metadata.amount_huf ?? "0");
-
-  console.log("BALANCE TOPUP WEBHOOK METADATA PARSED", {
-    userId,
-    amountHuf,
-  });
-
-  if (!userId || !Number.isFinite(amountHuf) || amountHuf <= 0) {
-    return NextResponse.json(
-      { error: "Hibás balance topup metadata." },
-      { status: 400 }
-    );
-  }
-
-  const { data: existingLedger, error: existingLedgerError } = await supabaseAdmin
-    .from("billing_ledger")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("entry_type", "balance_topup")
-    .eq("description", `Stripe egyenlegrendezés (${session.id})`)
-    .maybeSingle();
-
-  if (existingLedgerError) {
-    return NextResponse.json(
-      { error: existingLedgerError.message },
-      { status: 500 }
-    );
-  }
-
-  if (existingLedger) {
-    console.log("BALANCE TOPUP ALREADY PROCESSED", {
-      sessionId: session.id,
-      userId,
-    });
-
-    return NextResponse.json({ received: true, duplicate: true });
-  }
-
-  const { error: ledgerError } = await supabaseAdmin
-    .from("billing_ledger")
-    .insert({
-      user_id: userId,
-      entry_type: "balance_topup",
-      amount: amountHuf,
-      description: `Stripe egyenlegrendezés (${session.id})`,
-    });
-
-  if (ledgerError) {
-    return NextResponse.json(
-      { error: ledgerError.message },
-      { status: 500 }
-    );
-  }
-
-  console.log("BALANCE TOPUP LEDGER INSERT DONE", {
-    userId,
-    amountHuf,
-    description: `Stripe egyenlegrendezés (${session.id})`,
-  });
-
-  console.log("BALANCE TOPUP SUCCESS", {
-    userId,
-    sessionId: session.id,
-    amountHuf,
-  });
-}
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object as Stripe.Invoice;
+      await handlePaidSubscriptionInvoice(invoice, event.id);
     }
 
     if (
@@ -180,49 +426,7 @@ export async function POST(req: Request) {
       event.type === "customer.subscription.deleted"
     ) {
       const subscription = event.data.object as Stripe.Subscription;
-
-      const customerId =
-        typeof subscription.customer === "string"
-          ? subscription.customer
-          : subscription.customer.id;
-
-      const priceId = subscription.items.data[0]?.price?.id;
-
-      const tier =
-        subscription.status === "canceled" || subscription.status === "incomplete_expired"
-          ? "free"
-          : priceId === process.env.STRIPE_STANDARD_PRICE_ID
-          ? "standard"
-          : priceId === process.env.STRIPE_PRO_PRICE_ID
-          ? "pro"
-          : "free";
-
-      const { error: profileUpdateError } = await supabaseAdmin
-        .from("profiles")
-        .update({
-          stripe_subscription_id: subscription.status === "canceled" ? null : subscription.id,
-          subscription_tier: tier,
-          subscription_status: subscription.status,
-          subscription_current_period_end:
-            subscription.items.data[0]?.current_period_end
-              ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
-              : null,
-        })
-        .eq("stripe_customer_id", customerId);
-
-      if (profileUpdateError) {
-        return NextResponse.json(
-          { error: profileUpdateError.message },
-          { status: 500 }
-        );
-      }
-
-      console.log("SUBSCRIPTION STATUS SYNCED", {
-        customerId,
-        subscriptionId: subscription.id,
-        status: subscription.status,
-        tier,
-      });
+      await syncSubscriptionProfile(subscription);
     }
 
     return NextResponse.json({ received: true });
