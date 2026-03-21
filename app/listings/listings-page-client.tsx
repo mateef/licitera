@@ -906,210 +906,233 @@ export default function ListingsPage() {
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 2xl:grid-cols-3">
             {loading ? (
               Array.from({ length: PAGE_SIZE }).map((_, i) => (
-                <div
-                  key={i}
-                  className="overflow-hidden rounded-[1.9rem] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
-                >
-                  <Skeleton className="h-56 w-full" />
-                  <div className="space-y-4 p-5">
-                    <Skeleton className="h-5 w-24" />
-                    <Skeleton className="h-7 w-3/4" />
-                    <Skeleton className="h-4 w-full" />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Skeleton className="h-20 w-full rounded-2xl" />
-                      <Skeleton className="h-20 w-full rounded-2xl" />
-                    </div>
-                    <Skeleton className="h-11 w-full rounded-2xl" />
-                  </div>
-                </div>
-              ))
+  <div
+    key={i}
+    className="overflow-hidden rounded-[1.9rem] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
+  >
+    <Skeleton className="h-56 w-full" />
+    <div className="space-y-4 p-5">
+      <Skeleton className="h-5 w-24" />
+      <Skeleton className="h-7 w-3/4" />
+      <Skeleton className="h-4 w-full" />
+      <div className="grid grid-cols-2 gap-3">
+        <Skeleton className="h-20 w-full rounded-2xl" />
+        <Skeleton className="h-20 w-full rounded-2xl" />
+      </div>
+      <Skeleton className="h-11 w-full rounded-2xl" />
+    </div>
+  </div>
+))
             ) : listings.length === 0 ? (
               <div className="col-span-full rounded-[1.9rem] bg-white px-6 py-12 text-center shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-                  <Search className="h-6 w-6 text-slate-500" />
-                </div>
-                <h3 className="mt-4 text-xl font-bold text-slate-900">Nincs találat</h3>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Próbáld meg más kulcsszóval, vagy lazíts a szűrőkön, hogy több releváns aukciót láss.
-                </p>
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setQ("");
-                      setCountyInput("");
-                      setCityInput("");
-                      setCatL1("");
-                      setCatL2("");
-                      setCatL3("");
-                      setMinPrice("");
-                      setMaxPrice("");
-                      setPage(1);
-                    }}
-                  >
-                    Szűrők törlése
-                  </Button>
-                  <Button asChild>
-                    <a href="/create-listing">Eladok valamit</a>
-                  </Button>
-                </div>
-              </div>
+  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+    <Search className="h-6 w-6 text-slate-500" />
+  </div>
+  <h3 className="mt-4 text-xl font-bold text-slate-900">Nincs találat</h3>
+  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+    Próbáld meg más kulcsszóval, vagy lazíts a szűrőkön, hogy több releváns aukciót láss.
+  </p>
+  <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+    <Button
+      variant="outline"
+      onClick={() => {
+        setQ("");
+        setCountyInput("");
+        setCityInput("");
+        setCatL1("");
+        setCatL2("");
+        setCatL3("");
+        setMinPrice("");
+        setMaxPrice("");
+        setPage(1);
+      }}
+    >
+      Szűrők törlése
+    </Button>
+    <Button asChild>
+      <a href="/create-listing">Eladok valamit</a>
+    </Button>
+  </div>
+</div>
             ) : (
               listings.map((l) => {
-                const timeLeft = getTimeLeft(l.ends_at);
-                const endingSoon = new Date(l.ends_at).getTime() - now < 1000 * 60 * 60;
-                const minNext = l.current_price + l.min_increment;
-                const isWatched = mounted ? watchIds.includes(l.id) : false;
+  const timeLeft = getTimeLeft(l.ends_at);
+  const endingSoon = new Date(l.ends_at).getTime() - now < 1000 * 60 * 60;
+  const minNext = l.current_price + l.min_increment;
+  const isWatched = mounted ? watchIds.includes(l.id) : false;
 
-                return (
-                  <article
-                    key={l.id}
-                    className={`group overflow-hidden rounded-[2rem] transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_rgba(15,23,42,0.12)] ${
-                      l.is_featured
-                        ? "bg-gradient-to-br from-white via-white to-amber-50 shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_18px_45px_rgba(15,23,42,0.08)]"
-                        : "bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
-                    }`}
-                  >
-                    <div className="relative">
-                      <a href={`/listing/${l.id}`} className="block overflow-hidden">
-                        {l.image_urls?.[0] ? (
-                          <img
-                            src={l.image_urls[0]}
-                            className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.04] sm:h-64"
-                            alt={l.title}
-                          />
-                        ) : (
-                          <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400 sm:h-64">
-                            Nincs kép
-                          </div>
-                        )}
-                      </a>
+  return (
+    <article
+      key={l.id}
+      className={`group overflow-hidden rounded-[2rem] transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_rgba(15,23,42,0.12)] ${
+        l.is_featured
+          ? "bg-gradient-to-br from-white via-white to-amber-50 shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_18px_45px_rgba(15,23,42,0.08)]"
+          : "bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
+      }`}
+    >
+      <div className="relative">
+        <a href={`/listing/${l.id}`} className="block overflow-hidden">
+          {l.image_urls?.[0] ? (
+            <img
+              src={l.image_urls[0]}
+              className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.04] sm:h-64"
+              alt={l.title}
+            />
+          ) : (
+            <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400 sm:h-64">
+              Nincs kép
+            </div>
+          )}
+        </a>
 
-                      <div className="absolute left-4 top-4 right-[110px] flex flex-wrap gap-2 pr-2">
-                        {l.is_featured && (
-                          <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black shadow-sm">
-                            KIEMELT
-                          </span>
-                        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent" />
 
-                        {l.categories?.name && (
-                          <span className="rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white backdrop-blur">
-                            {l.categories.name}
-                          </span>
-                        )}
+        <div className="absolute left-4 top-4 right-[110px] flex flex-wrap gap-2 pr-2">
+          {l.is_featured && (
+            <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black shadow-sm">
+              KIEMELT
+            </span>
+          )}
 
-                        {endingSoon && (
-                          <span className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
-                            Hamarosan lejár
-                          </span>
-                        )}
-                      </div>
+          {l.categories?.name && (
+            <span className="rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+              {l.categories.name}
+            </span>
+          )}
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const res = toggleWatchlistId(l.id);
-                          setWatchIds(res.ids);
-                        }}
-                        className="absolute right-4 top-4 z-10 rounded-full bg-white/92 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm backdrop-blur transition hover:bg-white"
-                        title={isWatched ? "Levétel a figyelőlistáról" : "Hozzáadás a figyelőlistához"}
-                      >
-                        {isWatched ? "✓ Mentve" : "♡ Mentés"}
-                      </button>
-                    </div>
+          {endingSoon && (
+            <span className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+              Hamarosan lejár
+            </span>
+          )}
+        </div>
 
-                    <div className="space-y-5 p-5">
-                      <div className="space-y-3">
-                        <h2 className="line-clamp-2 text-xl font-bold leading-7 text-slate-900">
-                          <a href={`/listing/${l.id}`} className="transition hover:text-primary">
-                            {l.title}
-                          </a>
-                        </h2>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            const res = toggleWatchlistId(l.id);
+            setWatchIds(res.ids);
+          }}
+          className="absolute right-4 top-4 z-10 rounded-full bg-white/92 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm backdrop-blur transition hover:bg-white"
+          title={isWatched ? "Levétel a figyelőlistáról" : "Hozzáadás a figyelőlistához"}
+        >
+          {isWatched ? "✓ Mentve" : "♡ Mentés"}
+        </button>
 
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
-                            <MapPin className="h-3 w-3" />
-                            {l.county} · {l.city}
-                          </span>
+        <div className="absolute bottom-4 left-4 right-4">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
+            <Clock3 className="h-3.5 w-3.5" />
+            {timeLeft}
+          </div>
+        </div>
+      </div>
 
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                            {getDeliveryModeLabel(l.delivery_mode)}
-                          </span>
+      <div className="space-y-5 p-5">
+        <div className="space-y-3">
+          <h2 className="line-clamp-2 text-xl font-bold leading-7 text-slate-900">
+            <a href={`/listing/${l.id}`} className="transition hover:text-primary">
+              {l.title}
+            </a>
+          </h2>
 
-                          {l.seller_rating !== null && l.seller_rating !== undefined ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">
-                              <Star className="h-3 w-3 fill-current" />
-                              {l.seller_rating.toFixed(1)} ({l.seller_review_count ?? 0})
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
+              <MapPin className="h-3 w-3" />
+              {l.county} · {l.city}
+            </span>
 
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-wide text-slate-500">
-                            Jelenlegi licit
-                          </div>
-                          <div className="mt-1 text-3xl font-black tracking-tight text-slate-900">
-                            {formatHuf(l.current_price)}
-                          </div>
-                        </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">
+              {getDeliveryModeLabel(l.delivery_mode)}
+            </span>
 
-                        <div className="rounded-2xl bg-slate-100 px-3 py-2 text-right">
-                          <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                            Licitek
-                          </div>
-                          <div className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-slate-900">
-                            <Gavel className="h-3.5 w-3.5" />
-                            {l.bid_count ?? 0}
-                          </div>
-                        </div>
-                      </div>
+            {l.seller_rating !== null && l.seller_rating !== undefined ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">
+                <Star className="h-3 w-3 fill-current" />
+                {l.seller_rating.toFixed(1)} ({l.seller_review_count ?? 0})
+              </span>
+            ) : null}
+          </div>
+        </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-[1.35rem] bg-slate-50 p-4">
-                          <div className="text-xs uppercase tracking-wide text-slate-500">
-                            Következő minimum
-                          </div>
-                          <div className="mt-2 font-semibold text-slate-900">
-                            {formatHuf(minNext)}
-                          </div>
-                        </div>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">
+              Jelenlegi licit
+            </div>
+            <div className="mt-1 text-3xl font-black tracking-tight text-slate-900">
+              {formatHuf(l.current_price)}
+            </div>
+          </div>
 
-                        <div className="rounded-[1.35rem] bg-slate-50 p-4">
-                          <div className="inline-flex items-center gap-1 text-xs uppercase tracking-wide text-slate-500">
-                            <Clock3 className="h-3 w-3" />
-                            Hátralévő idő
-                          </div>
-                          <div className="mt-2 font-semibold text-slate-900">{timeLeft}</div>
-                        </div>
-                      </div>
+          <div className="rounded-2xl bg-slate-100 px-3 py-2 text-right">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
+              Licitek
+            </div>
+            <div className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-slate-900">
+              <Gavel className="h-3.5 w-3.5" />
+              {l.bid_count ?? 0}
+            </div>
+          </div>
+        </div>
 
-                      {l.buy_now_price ? (
-                        <div className="rounded-[1.35rem] border border-emerald-200 bg-emerald-50 p-4">
-                          <div className="text-xs uppercase tracking-wide text-emerald-700">
-                            Villámár
-                          </div>
-                          <div className="mt-2 font-bold text-emerald-900">
-                            {formatHuf(l.buy_now_price)}
-                          </div>
-                        </div>
-                      ) : null}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-[1.35rem] bg-slate-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-slate-500">
+              Következő minimum
+            </div>
+            <div className="mt-2 font-semibold text-slate-900">
+              {formatHuf(minNext)}
+            </div>
+          </div>
 
-                      {l.description && (
-                        <p className="line-clamp-2 text-sm leading-6 text-slate-600">
-                          {l.description}
-                        </p>
-                      )}
+          <div className="rounded-[1.35rem] bg-slate-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-slate-500">
+              Állapot
+            </div>
+            <div className="mt-2 font-semibold text-slate-900">
+              {endingSoon ? "Pörgős aukció" : "Aktív aukció"}
+            </div>
+          </div>
+        </div>
 
-                      <Button className="h-11 w-full rounded-2xl" asChild>
-                        <a href={`/listing/${l.id}`}>Megnyitás</a>
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })
+        {l.buy_now_price ? (
+          <div className="rounded-[1.35rem] border border-emerald-200 bg-emerald-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-emerald-700">
+              Villámár
+            </div>
+            <div className="mt-2 font-bold text-emerald-900">
+              {formatHuf(l.buy_now_price)}
+            </div>
+          </div>
+        ) : null}
+
+        {l.description && (
+          <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+            {l.description}
+          </p>
+        )}
+
+        <div className="flex gap-3">
+          <Button className="h-11 flex-1 rounded-2xl" asChild>
+            <a href={`/listing/${l.id}`}>Megnyitás</a>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="h-11 rounded-2xl border-slate-200 px-4"
+            onClick={() => {
+              const res = toggleWatchlistId(l.id);
+              setWatchIds(res.ids);
+            }}
+          >
+            {isWatched ? "Mentve" : "Figyelem"}
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+})
             )}
           </div>
 
