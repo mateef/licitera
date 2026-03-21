@@ -642,243 +642,256 @@ export default function ListingsPage() {
 
       <div className="grid gap-8 xl:grid-cols-[290px_minmax(0,1fr)]">
         <aside className="xl:sticky xl:top-28 xl:self-start">
-          <div className="space-y-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <SlidersHorizontal className="h-4 w-4" />
-              Szűrők
-            </div>
+  <div className="space-y-4">
+    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+      <SlidersHorizontal className="h-4 w-4" />
+      Szűrők
+    </div>
 
-            <div className="space-y-4 rounded-[1.8rem] bg-white p-5 shadow-[0_20px_50px_rgba(15,23,42,0.06)]">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Keresés</label>
-                <div className="relative">
-                  <Input
-                    placeholder="Mit keresel?"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    className="h-11 rounded-2xl border-slate-200 bg-white pl-11 shadow-sm"
-                  />
-                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                <SearchableDropdown
-                  label="Vármegye"
-                  placeholder="Kezdd el írni..."
-                  value={countyInput}
-                  onChange={setCountyInput}
-                  options={[...HUNGARIAN_COUNTIES]}
-                />
-
-                <SearchableDropdown
-                  label="Település"
-                  placeholder={county ? "Kezdd el írni..." : "Előbb válassz vármegyét"}
-                  value={cityInput}
-                  onChange={setCityInput}
-                  options={availableCities}
-                  disabled={!county}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Főkategória</label>
-                <select
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm"
-                  value={catL1}
-                  onChange={(e) => setCatL1(e.target.value)}
-                >
-                  <option value="">Összes</option>
-                  {catsL1.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Alkategória</label>
-                <select
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                  value={catL2}
-                  onChange={(e) => setCatL2(e.target.value)}
-                  disabled={!catL1 || catsL2.length === 0}
-                >
-                  <option value="">Összes</option>
-                  {catsL2.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Típus</label>
-                <select
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                  value={catL3}
-                  onChange={(e) => setCatL3(e.target.value)}
-                  disabled={!catL2 || catsL3.length === 0}
-                >
-                  <option value="">Összes</option>
-                  {catsL3.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Minimum ár</label>
-                  <Input
-                    placeholder="0 Ft"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    className="h-11 rounded-2xl border-slate-200 bg-white shadow-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Maximum ár</label>
-                  <Input
-                    placeholder="Pl. 50 000"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    className="h-11 rounded-2xl border-slate-200 bg-white shadow-sm"
-                  />
-                </div>
-              </div>
-
-              <Button
-                variant="outline"
-                className="h-11 w-full rounded-2xl"
-                onClick={() => {
-                  setQ("");
-                  setCountyInput("");
-                  setCityInput("");
-                  setCatL1("");
-                  setCatL2("");
-                  setCatL3("");
-                  setMinPrice("");
-                  setMaxPrice("");
-                  setPage(1);
-                }}
-              >
-                Szűrők törlése
-              </Button>
-            </div>
+    <div className="rounded-[2rem] bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur sm:p-5">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700">Keresés</label>
+          <div className="relative">
+            <Input
+              placeholder="Mit keresel?"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-11 pr-4 shadow-none focus-visible:bg-white"
+            />
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           </div>
-        </aside>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+          <SearchableDropdown
+            label="Vármegye"
+            placeholder="Kezdd el írni..."
+            value={countyInput}
+            onChange={setCountyInput}
+            options={[...HUNGARIAN_COUNTIES]}
+          />
+
+          <SearchableDropdown
+            label="Település"
+            placeholder={county ? "Kezdd el írni..." : "Előbb válassz vármegyét"}
+            value={cityInput}
+            onChange={setCityInput}
+            options={availableCities}
+            disabled={!county}
+          />
+        </div>
+
+        <div className="grid gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Főkategória</label>
+            <select
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:bg-white"
+              value={catL1}
+              onChange={(e) => setCatL1(e.target.value)}
+            >
+              <option value="">Összes</option>
+              {catsL1.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Alkategória</label>
+            <select
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              value={catL2}
+              onChange={(e) => setCatL2(e.target.value)}
+              disabled={!catL1 || catsL2.length === 0}
+            >
+              <option value="">Összes</option>
+              {catsL2.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Típus</label>
+            <select
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              value={catL3}
+              onChange={(e) => setCatL3(e.target.value)}
+              disabled={!catL2 || catsL3.length === 0}
+            >
+              <option value="">Összes</option>
+              {catsL3.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Minimum ár</label>
+            <Input
+              placeholder="0 Ft"
+              value={minPrice}
+              onChange={(e) => setMinPrice(e.target.value)}
+              className="h-12 rounded-2xl border-slate-200 bg-slate-50 shadow-none focus-visible:bg-white"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">Maximum ár</label>
+            <Input
+              placeholder="Pl. 50 000"
+              value={maxPrice}
+              onChange={(e) => setMaxPrice(e.target.value)}
+              className="h-12 rounded-2xl border-slate-200 bg-slate-50 shadow-none focus-visible:bg-white"
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 pt-1">
+          <Button
+            className="h-12 rounded-2xl"
+            onClick={() => loadListings()}
+          >
+            Találatok frissítése
+          </Button>
+
+          <Button
+            variant="outline"
+            className="h-12 rounded-2xl border-slate-200"
+            onClick={() => {
+              setQ("");
+              setCountyInput("");
+              setCityInput("");
+              setCatL1("");
+              setCatL2("");
+              setCatL3("");
+              setMinPrice("");
+              setMaxPrice("");
+              setPage(1);
+            }}
+          >
+            Szűrők törlése
+          </Button>
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>
 
         <section className="space-y-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex flex-wrap gap-2">
-              {q && (
-                <button
-                  onClick={() => setQ("")}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Keresés: {q}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+  <div className="flex flex-wrap gap-2">
+    {q && (
+      <button
+        onClick={() => setQ("")}
+        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      >
+        Keresés: {q}
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
 
-              {countyInput && (
-                <button
-                  onClick={() => setCountyInput("")}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Vármegye: {countyInput}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+    {countyInput && (
+      <button
+        onClick={() => setCountyInput("")}
+        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      >
+        Vármegye: {countyInput}
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
 
-              {cityInput && (
-                <button
-                  onClick={() => setCityInput("")}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Település: {cityInput}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+    {cityInput && (
+      <button
+        onClick={() => setCityInput("")}
+        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      >
+        Település: {cityInput}
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
 
-              {selectedCategoryName && (
-                <button
-                  onClick={() => {
-                    setCatL1("");
-                    setCatL2("");
-                    setCatL3("");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Kategória: {selectedCategoryName}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+    {selectedCategoryName && (
+      <button
+        onClick={() => {
+          setCatL1("");
+          setCatL2("");
+          setCatL3("");
+        }}
+        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      >
+        Kategória: {selectedCategoryName}
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
 
-              {minPrice && (
-                <button
-                  onClick={() => setMinPrice("")}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Minimum: {minPrice}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+    {minPrice && (
+      <button
+        onClick={() => setMinPrice("")}
+        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      >
+        Minimum: {minPrice}
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
 
-              {maxPrice && (
-                <button
-                  onClick={() => setMaxPrice("")}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Maximum: {maxPrice}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+    {maxPrice && (
+      <button
+        onClick={() => setMaxPrice("")}
+        className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      >
+        Maximum: {maxPrice}
+        <X className="h-3.5 w-3.5" />
+      </button>
+    )}
 
-              {hasAnyFilter && (
-                <button
-                  onClick={() => {
-                    setQ("");
-                    setCountyInput("");
-                    setCityInput("");
-                    setCatL1("");
-                    setCatL2("");
-                    setCatL3("");
-                    setMinPrice("");
-                    setMaxPrice("");
-                    setPage(1);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800"
-                >
-                  Mindent törlök
-                </button>
-              )}
-            </div>
+    {hasAnyFilter && (
+      <button
+        onClick={() => {
+          setQ("");
+          setCountyInput("");
+          setCityInput("");
+          setCatL1("");
+          setCatL2("");
+          setCatL3("");
+          setMinPrice("");
+          setMaxPrice("");
+          setPage(1);
+        }}
+        className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800"
+      >
+        Mindent törlök
+      </button>
+    )}
+  </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden items-center gap-2 text-sm text-slate-500 sm:inline-flex">
-                <LayoutGrid className="h-4 w-4" />
-                {totalCount} aukció
-              </div>
+  <div className="flex items-center gap-3">
+    <div className="hidden items-center gap-2 text-sm text-slate-500 sm:inline-flex">
+      <LayoutGrid className="h-4 w-4" />
+      {totalCount} aukció
+    </div>
 
-              <select
-                className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as any)}
-              >
-                <option value="ending">Hamarosan lejár</option>
-                <option value="new">Legújabb</option>
-                <option value="price_desc">Legmagasabb ár</option>
-                <option value="price_asc">Legalacsonyabb ár</option>
-              </select>
-            </div>
-          </div>
+    <select
+      className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none shadow-sm"
+      value={sort}
+      onChange={(e) => setSort(e.target.value as any)}
+    >
+      <option value="ending">Hamarosan lejár</option>
+      <option value="new">Legújabb</option>
+      <option value="price_desc">Legmagasabb ár</option>
+      <option value="price_asc">Legalacsonyabb ár</option>
+    </select>
+  </div>
+</div>
 
           {loadError ? (
             <div className="rounded-[1.6rem] bg-red-50 px-5 py-5 text-sm text-red-700">
