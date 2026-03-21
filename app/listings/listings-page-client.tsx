@@ -4,13 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import settlements from "@/data/hungary-settlements.json";
 import { HUNGARIAN_COUNTIES, DELIVERY_MODES } from "@/lib/hungary";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatHuf } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Search,
+  Sparkles,
+  MapPin,
+  Clock3,
+  Gavel,
+  SlidersHorizontal,
+  ChevronRight,
+  Star,
+  LayoutGrid,
+  X,
+} from "lucide-react";
 
 type Listing = {
   id: string;
@@ -179,11 +190,11 @@ function SearchableDropdown({
           onFocus={() => {
             if (!disabled) setOpen(true);
           }}
-          className="h-11 rounded-xl"
+          className="h-11 rounded-2xl border-slate-200 bg-white shadow-sm"
         />
 
         {open && !disabled && filtered.length > 0 && (
-          <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+          <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
             {filtered.map((item) => (
               <button
                 key={item}
@@ -452,7 +463,8 @@ export default function ListingsPage() {
           is_featured: tier === "pro",
         };
       });
-            formatted.sort((a, b) => {
+
+      formatted.sort((a, b) => {
         if (!!a.is_featured !== !!b.is_featured) {
           return a.is_featured ? -1 : 1;
         }
@@ -552,79 +564,105 @@ export default function ListingsPage() {
   const hasAnyFilter =
     !!q.trim() || !!finalCategoryId || !!minPrice || !!maxPrice || !!countyInput || !!cityInput;
 
+  const selectedCategoryName =
+    catsL3.find((c) => c.id === catL3)?.name ||
+    catsL2.find((c) => c.id === catL2)?.name ||
+    catsL1.find((c) => c.id === catL1)?.name ||
+    "";
+
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(219,234,254,0.9),rgba(255,255,255,0.96),rgba(245,208,254,0.75))] p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="inline-flex rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-slate-600 backdrop-blur">
-              Aukciók
-            </div>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-              Találd meg a következő nyertes licitet
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-              Modern, gyors és átlátható aukciós felület, jobb szűréssel, tisztább
-              kártyákkal és sokkal erősebb mobilos élménnyel.
-            </p>
-          </div>
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-[2.25rem] bg-[linear-gradient(135deg,rgba(219,234,254,0.95),rgba(255,255,255,0.98),rgba(245,208,254,0.78))] px-5 py-6 sm:px-8 sm:py-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.95),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.6),transparent_35%)]" />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm text-slate-700 backdrop-blur">
-              Találatok ezen az oldalon: <span className="font-semibold text-slate-900">{listings.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {featuredCategoryCards.length > 0 && (
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {featuredCategoryCards.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setCatL1(item.id);
-                  setCatL2("");
-                  setCatL3("");
-                }}
-                className="flex items-center justify-between rounded-[1.5rem] border border-white/70 bg-white/75 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
-                    {item.icon}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-900">{item.title}</div>
-                    <div className="text-sm text-slate-500">Népszerű kategória</div>
-                  </div>
-                </div>
-
-                <div className="text-slate-400">→</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <Card className="overflow-hidden rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Szűrők</CardTitle>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Keresés</label>
-                <Input
-                  placeholder="Mit keresel?"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  className="h-11 rounded-xl"
-                />
+        <div className="relative space-y-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1 text-xs font-semibold text-slate-600 backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" />
+                Élő aukciók
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-5xl">
+                Találd meg a következő
+                <span className="block bg-gradient-to-r from-blue-600 via-indigo-600 to-pink-600 bg-clip-text text-transparent">
+                  nyertes licitet
+                </span>
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
+                Letisztult, gyors és modern piactérélmény. Kevesebb zaj, jobb fókusz, erősebb aukciós flow.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-2xl bg-white/75 px-4 py-3 text-sm text-slate-600 backdrop-blur">
+                Találat:
+                <span className="ml-2 font-black text-slate-900">{totalCount}</span>
+              </div>
+              <div className="rounded-2xl bg-white/75 px-4 py-3 text-sm text-slate-600 backdrop-blur">
+                Oldal:
+                <span className="ml-2 font-black text-slate-900">
+                  {page} / {totalPages}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {featuredCategoryCards.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {featuredCategoryCards.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setCatL1(item.id);
+                    setCatL2("");
+                    setCatL3("");
+                  }}
+                  className="group flex items-center justify-between rounded-[1.6rem] bg-white/75 px-4 py-4 text-left backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+                      {item.icon}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-900">{item.title}</div>
+                      <div className="text-sm text-slate-500">Népszerű kategória</div>
+                    </div>
+                  </div>
+
+                  <ChevronRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="grid gap-8 xl:grid-cols-[290px_minmax(0,1fr)]">
+        <aside className="xl:sticky xl:top-28 xl:self-start">
+          <div className="space-y-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <SlidersHorizontal className="h-4 w-4" />
+              Szűrők
+            </div>
+
+            <div className="space-y-4 rounded-[1.8rem] bg-white p-5 shadow-[0_20px_50px_rgba(15,23,42,0.06)]">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Keresés</label>
+                <div className="relative">
+                  <Input
+                    placeholder="Mit keresel?"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    className="h-11 rounded-2xl border-slate-200 bg-white pl-11 shadow-sm"
+                  />
+                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
                 <SearchableDropdown
                   label="Vármegye"
                   placeholder="Kezdd el írni..."
@@ -646,7 +684,7 @@ export default function ListingsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Főkategória</label>
                 <select
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm"
                   value={catL1}
                   onChange={(e) => setCatL1(e.target.value)}
                 >
@@ -662,7 +700,7 @@ export default function ListingsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Alkategória</label>
                 <select
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                   value={catL2}
                   onChange={(e) => setCatL2(e.target.value)}
                   disabled={!catL1 || catsL2.length === 0}
@@ -679,7 +717,7 @@ export default function ListingsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Típus</label>
                 <select
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                   value={catL3}
                   onChange={(e) => setCatL3(e.target.value)}
                   disabled={!catL2 || catsL3.length === 0}
@@ -693,14 +731,14 @@ export default function ListingsPage() {
                 </select>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Minimum ár</label>
                   <Input
                     placeholder="0 Ft"
                     value={minPrice}
                     onChange={(e) => setMinPrice(e.target.value)}
-                    className="h-11 rounded-xl"
+                    className="h-11 rounded-2xl border-slate-200 bg-white shadow-sm"
                   />
                 </div>
 
@@ -710,14 +748,14 @@ export default function ListingsPage() {
                     placeholder="Pl. 50 000"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(e.target.value)}
-                    className="h-11 rounded-xl"
+                    className="h-11 rounded-2xl border-slate-200 bg-white shadow-sm"
                   />
                 </div>
               </div>
 
               <Button
                 variant="outline"
-                className="h-11 w-full rounded-xl"
+                className="h-11 w-full rounded-2xl"
                 onClick={() => {
                   setQ("");
                   setCountyInput("");
@@ -732,69 +770,79 @@ export default function ListingsPage() {
               >
                 Szűrők törlése
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </aside>
 
-        <section className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-[1.5rem] border border-slate-200/80 bg-white/85 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.05)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <section className="space-y-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap gap-2">
               {q && (
-                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setQ("")}>
-                  Keresés: {q} ✕
-                </Badge>
+                <button
+                  onClick={() => setQ("")}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  Keresés: {q}
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
 
               {countyInput && (
-                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCountyInput("")}>
-                  Vármegye: {countyInput} ✕
-                </Badge>
+                <button
+                  onClick={() => setCountyInput("")}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  Vármegye: {countyInput}
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
 
               {cityInput && (
-                <Badge variant="outline" className="cursor-pointer rounded-full px-3 py-1" onClick={() => setCityInput("")}>
-                  Település: {cityInput} ✕
-                </Badge>
+                <button
+                  onClick={() => setCityInput("")}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  Település: {cityInput}
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
 
-              {finalCategoryId && (
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer rounded-full px-3 py-1"
+              {selectedCategoryName && (
+                <button
                   onClick={() => {
                     setCatL1("");
                     setCatL2("");
                     setCatL3("");
                   }}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
-                  Kategória ✕
-                </Badge>
+                  Kategória: {selectedCategoryName}
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
 
               {minPrice && (
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer rounded-full px-3 py-1"
+                <button
                   onClick={() => setMinPrice("")}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
-                  Minimum: {minPrice} ✕
-                </Badge>
+                  Minimum: {minPrice}
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
 
               {maxPrice && (
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer rounded-full px-3 py-1"
+                <button
                   onClick={() => setMaxPrice("")}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
-                  Maximum: {maxPrice} ✕
-                </Badge>
+                  Maximum: {maxPrice}
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
 
               {hasAnyFilter && (
-                <Badge
-                  variant="secondary"
-                  className="cursor-pointer rounded-full px-3 py-1"
+                <button
                   onClick={() => {
                     setQ("");
                     setCountyInput("");
@@ -806,85 +854,93 @@ export default function ListingsPage() {
                     setMaxPrice("");
                     setPage(1);
                   }}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800"
                 >
                   Mindent törlök
-                </Badge>
+                </button>
               )}
             </div>
 
-            <select
-              className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none"
-              value={sort}
-              onChange={(e) => setSort(e.target.value as any)}
-            >
-              <option value="ending">Hamarosan lejár</option>
-              <option value="new">Legújabb</option>
-              <option value="price_desc">Legmagasabb ár</option>
-              <option value="price_asc">Legalacsonyabb ár</option>
-            </select>
+            <div className="flex items-center gap-3">
+              <div className="hidden items-center gap-2 text-sm text-slate-500 sm:inline-flex">
+                <LayoutGrid className="h-4 w-4" />
+                {totalCount} aukció
+              </div>
+
+              <select
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-sm"
+                value={sort}
+                onChange={(e) => setSort(e.target.value as any)}
+              >
+                <option value="ending">Hamarosan lejár</option>
+                <option value="new">Legújabb</option>
+                <option value="price_desc">Legmagasabb ár</option>
+                <option value="price_asc">Legalacsonyabb ár</option>
+              </select>
+            </div>
           </div>
 
           {loadError ? (
-            <Card className="rounded-[1.5rem] border-red-200 bg-red-50/70 shadow-none">
-              <CardHeader>
-                <CardTitle>Hiba történt a betöltésnél</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-red-700">
-                <div>{loadError}</div>
-                <Button variant="outline" onClick={loadListings}>
-                  Újrapróbálom
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="rounded-[1.6rem] bg-red-50 px-5 py-5 text-sm text-red-700">
+              <div className="font-semibold text-red-900">Hiba történt a betöltésnél</div>
+              <div className="mt-2">{loadError}</div>
+              <Button variant="outline" className="mt-4" onClick={loadListings}>
+                Újrapróbálom
+              </Button>
+            </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 2xl:grid-cols-3">
             {loading ? (
               Array.from({ length: PAGE_SIZE }).map((_, i) => (
-                <Card key={i} className="overflow-hidden rounded-[1.75rem] border-slate-200/80">
-                  <Skeleton className="h-52 w-full" />
-                  <CardHeader className="space-y-3">
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-6 w-3/4" />
-                  </CardHeader>
-                  <CardContent className="space-y-3">
+                <div
+                  key={i}
+                  className="overflow-hidden rounded-[1.9rem] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
+                >
+                  <Skeleton className="h-56 w-full" />
+                  <div className="space-y-4 p-5">
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-7 w-3/4" />
                     <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="h-11 w-full rounded-xl" />
-                  </CardContent>
-                </Card>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Skeleton className="h-20 w-full rounded-2xl" />
+                      <Skeleton className="h-20 w-full rounded-2xl" />
+                    </div>
+                    <Skeleton className="h-11 w-full rounded-2xl" />
+                  </div>
+                </div>
               ))
             ) : listings.length === 0 ? (
-              <Card className="sm:col-span-2 xl:col-span-3 rounded-[1.75rem] border-slate-200/80">
-                <CardHeader>
-                  <CardTitle>Nincs találat</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Próbáld meg más kulcsszóval, vagy lazíts a szűrőkön.</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setQ("");
-                        setCountyInput("");
-                        setCityInput("");
-                        setCatL1("");
-                        setCatL2("");
-                        setCatL3("");
-                        setMinPrice("");
-                        setMaxPrice("");
-                        setPage(1);
-                      }}
-                    >
-                      Szűrők törlése
-                    </Button>
-                    <Button asChild>
-                      <a href="/create-listing">Eladok valamit</a>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="col-span-full rounded-[1.9rem] bg-white px-6 py-12 text-center shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+                  <Search className="h-6 w-6 text-slate-500" />
+                </div>
+                <h3 className="mt-4 text-xl font-bold text-slate-900">Nincs találat</h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                  Próbáld meg más kulcsszóval, vagy lazíts a szűrőkön, hogy több releváns aukciót láss.
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setQ("");
+                      setCountyInput("");
+                      setCityInput("");
+                      setCatL1("");
+                      setCatL2("");
+                      setCatL3("");
+                      setMinPrice("");
+                      setMaxPrice("");
+                      setPage(1);
+                    }}
+                  >
+                    Szűrők törlése
+                  </Button>
+                  <Button asChild>
+                    <a href="/create-listing">Eladok valamit</a>
+                  </Button>
+                </div>
+              </div>
             ) : (
               listings.map((l) => {
                 const timeLeft = getTimeLeft(l.ends_at);
@@ -893,83 +949,85 @@ export default function ListingsPage() {
                 const isWatched = mounted ? watchIds.includes(l.id) : false;
 
                 return (
-                  <Card
+                  <article
                     key={l.id}
-                    className={`group overflow-hidden rounded-[1.75rem] border transition duration-300 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.12)]
-                      ${
-                        l.is_featured
-                          ? "border-amber-300 bg-gradient-to-br from-white to-amber-50 shadow-[0_0_0_2px_rgba(251,191,36,0.25),0_18px_40px_rgba(15,23,42,0.08)]"
-                          : "border-slate-200/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.06)]"
-                      }`}
+                    className={`group overflow-hidden rounded-[2rem] transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_rgba(15,23,42,0.12)] ${
+                      l.is_featured
+                        ? "bg-gradient-to-br from-white via-white to-amber-50 shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_18px_45px_rgba(15,23,42,0.08)]"
+                        : "bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
+                    }`}
                   >
                     <div className="relative">
                       <a href={`/listing/${l.id}`} className="block overflow-hidden">
                         {l.image_urls?.[0] ? (
                           <img
                             src={l.image_urls[0]}
-                            className="h-52 w-full object-cover transition duration-500 group-hover:scale-[1.04] sm:h-56"
+                            className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.04] sm:h-64"
                             alt={l.title}
                           />
                         ) : (
-                          <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400">
+                          <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400 sm:h-64">
                             Nincs kép
                           </div>
                         )}
                       </a>
 
-                      <div className="absolute left-3 top-3 right-[108px] flex flex-wrap gap-2 pr-2">
+                      <div className="absolute left-4 top-4 right-[110px] flex flex-wrap gap-2 pr-2">
                         {l.is_featured && (
-                          <Badge className="rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-semibold text-black hover:bg-amber-400 sm:px-3 sm:text-xs">
-  KIEMELT
-</Badge>
+                          <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black shadow-sm">
+                            KIEMELT
+                          </span>
                         )}
 
                         {l.categories?.name && (
-                          <Badge className="rounded-full border-white/20 bg-black/45 px-2.5 py-1 text-[11px] text-white backdrop-blur sm:px-3 sm:text-xs">
-  {l.categories.name}
-</Badge>
+                          <span className="rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                            {l.categories.name}
+                          </span>
                         )}
 
                         {endingSoon && (
-                          <Badge variant="destructive" className="rounded-full px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs">
-  Hamarosan lejár
-</Badge>
+                          <span className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                            Hamarosan lejár
+                          </span>
                         )}
                       </div>
 
                       <button
-  type="button"
-  onClick={(e) => {
-    e.preventDefault();
-    const res = toggleWatchlistId(l.id);
-    setWatchIds(res.ids);
-  }}
-  className="absolute right-3 top-3 z-10 rounded-full border border-white/20 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm backdrop-blur hover:bg-white sm:px-3 sm:text-sm"
-  title={isWatched ? "Levétel a figyelőlistáról" : "Hozzáadás a figyelőlistához"}
->
-  {isWatched ? "✓ Mentve" : "♡ Mentés"}
-</button>
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const res = toggleWatchlistId(l.id);
+                          setWatchIds(res.ids);
+                        }}
+                        className="absolute right-4 top-4 z-10 rounded-full bg-white/92 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm backdrop-blur transition hover:bg-white"
+                        title={isWatched ? "Levétel a figyelőlistáról" : "Hozzáadás a figyelőlistához"}
+                      >
+                        {isWatched ? "✓ Mentve" : "♡ Mentés"}
+                      </button>
                     </div>
 
-                    <CardHeader className="space-y-3 px-4 pb-3 pt-4 sm:px-6">
-                      <div className="space-y-2">
-                        <CardTitle className="line-clamp-2 text-lg leading-6">
+                    <div className="space-y-5 p-5">
+                      <div className="space-y-3">
+                        <h2 className="line-clamp-2 text-xl font-bold leading-7 text-slate-900">
                           <a href={`/listing/${l.id}`} className="transition hover:text-primary">
                             {l.title}
                           </a>
-                        </CardTitle>
+                        </h2>
 
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
+                            <MapPin className="h-3 w-3" />
                             {l.county} · {l.city}
                           </span>
+
                           <span className="rounded-full bg-slate-100 px-2.5 py-1">
                             {getDeliveryModeLabel(l.delivery_mode)}
                           </span>
 
                           {l.seller_rating !== null && l.seller_rating !== undefined ? (
-                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">
-                              ⭐ {l.seller_rating.toFixed(1)} ({l.seller_review_count ?? 0})
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">
+                              <Star className="h-3 w-3 fill-current" />
+                              {l.seller_rating.toFixed(1)} ({l.seller_review_count ?? 0})
                             </span>
                           ) : null}
                         </div>
@@ -980,68 +1038,70 @@ export default function ListingsPage() {
                           <div className="text-xs uppercase tracking-wide text-slate-500">
                             Jelenlegi licit
                           </div>
-                          <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
+                          <div className="mt-1 text-3xl font-black tracking-tight text-slate-900">
                             {formatHuf(l.current_price)}
                           </div>
                         </div>
 
-                        <div className="shrink-0 rounded-2xl bg-slate-100 px-3 py-2 text-right">
+                        <div className="rounded-2xl bg-slate-100 px-3 py-2 text-right">
                           <div className="text-[11px] uppercase tracking-wide text-slate-500">
                             Licitek
                           </div>
-                          <div className="text-sm font-semibold text-slate-900">
+                          <div className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-slate-900">
+                            <Gavel className="h-3.5 w-3.5" />
                             {l.bid_count ?? 0}
                           </div>
                         </div>
                       </div>
-                    </CardHeader>
 
-                    <CardContent className="space-y-4 px-4 pb-4 pt-0 text-sm sm:px-6 sm:pb-6">
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="rounded-[1.35rem] bg-slate-50 p-4">
                           <div className="text-xs uppercase tracking-wide text-slate-500">
                             Következő minimum
                           </div>
-                          <div className="mt-1 font-semibold text-slate-900">
+                          <div className="mt-2 font-semibold text-slate-900">
                             {formatHuf(minNext)}
                           </div>
                         </div>
 
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs uppercase tracking-wide text-slate-500">
+                        <div className="rounded-[1.35rem] bg-slate-50 p-4">
+                          <div className="inline-flex items-center gap-1 text-xs uppercase tracking-wide text-slate-500">
+                            <Clock3 className="h-3 w-3" />
                             Hátralévő idő
                           </div>
-                          <div className="mt-1 font-semibold text-slate-900">{timeLeft}</div>
+                          <div className="mt-2 font-semibold text-slate-900">{timeLeft}</div>
                         </div>
                       </div>
 
                       {l.buy_now_price ? (
-                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                        <div className="rounded-[1.35rem] border border-emerald-200 bg-emerald-50 p-4">
                           <div className="text-xs uppercase tracking-wide text-emerald-700">
                             Villámár
                           </div>
-                          <div className="mt-1 font-semibold text-emerald-900">
+                          <div className="mt-2 font-bold text-emerald-900">
                             {formatHuf(l.buy_now_price)}
                           </div>
                         </div>
                       ) : null}
 
                       {l.description && (
-                        <p className="line-clamp-2 leading-6 text-slate-600">{l.description}</p>
+                        <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+                          {l.description}
+                        </p>
                       )}
 
-                      <Button className="h-11 w-full rounded-xl" asChild>
+                      <Button className="h-11 w-full rounded-2xl" asChild>
                         <a href={`/listing/${l.id}`}>Megnyitás</a>
                       </Button>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </article>
                 );
               })
             )}
           </div>
 
           {!loading && totalPages > 1 && (
-            <div className="flex flex-col items-center justify-between gap-3 rounded-[1.5rem] border border-slate-200/80 bg-white/85 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.05)] sm:flex-row">
+            <div className="flex flex-col items-center justify-between gap-3 rounded-[1.5rem] bg-white px-4 py-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:flex-row">
               <div className="text-sm text-slate-600">
                 Oldal <span className="font-semibold text-slate-900">{page}</span> / {totalPages}
               </div>
@@ -1049,7 +1109,7 @@ export default function ListingsPage() {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  className="rounded-xl"
+                  className="rounded-2xl"
                   disabled={page <= 1}
                   onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 >
@@ -1057,7 +1117,7 @@ export default function ListingsPage() {
                 </Button>
 
                 <Button
-                  className="rounded-xl"
+                  className="rounded-2xl"
                   disabled={page >= totalPages}
                   onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
                 >
