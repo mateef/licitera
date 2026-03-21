@@ -24,6 +24,10 @@ import {
   SearchCheck,
   MapPinned,
   MessageSquareMore,
+  Search,
+  Heart,
+  Brain,
+  BarChart3,
 } from "lucide-react";
 
 export default function HomePage() {
@@ -380,89 +384,236 @@ export default function HomePage() {
 
           {/* RIGHT */}
           <div>
-            <div className="relative mx-auto w-full max-w-3xl">
-              <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-blue-500/25 via-indigo-500/10 to-fuchsia-500/25 blur-3xl" />
+  <div className="relative mx-auto w-full max-w-3xl">
+    <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-blue-500/25 via-indigo-500/10 to-fuchsia-500/25 blur-3xl" />
 
-              <div className="relative overflow-hidden rounded-[2.2rem] border border-white/12 bg-white/[0.08] p-3 shadow-[0_24px_100px_rgba(6,8,22,0.65)] backdrop-blur-2xl sm:p-4">
-                <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    Előnézet
-                  </div>
-                  <div className="text-xs uppercase tracking-[0.18em] text-white/40">Licitera Preview</div>
+    <div className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-white/[0.08] p-3 shadow-[0_24px_100px_rgba(6,8,22,0.65)] backdrop-blur-2xl sm:p-4">
+      <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          Élő mock preview
+        </div>
+        <div className="text-xs uppercase tracking-[0.18em] text-white/40">Licitera App UI</div>
+      </div>
+
+      <div className="rounded-[1.6rem] border border-white/10 bg-[#0a1020] p-3 sm:p-4">
+        <div className="mx-auto w-full max-w-[520px] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">Licitera</div>
+              <div className="mt-1 text-lg font-bold text-white">Főképernyő</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white/80">
+                <BellRing className="h-4 w-4" />
+              </button>
+              <button className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white/80">
+                <Heart className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3 px-4 py-4">
+            <div className="rounded-[1.4rem] bg-gradient-to-r from-blue-500/20 via-indigo-500/20 to-fuchsia-500/20 p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-white/45">
+                Készen állsz?
+              </div>
+              <div className="mt-2 text-2xl font-black leading-tight text-white">
+                Találd meg a következő
+                <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
+                  nyertes licitet
+                </span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="flex h-12 items-center rounded-full border border-white/10 bg-white/5 px-4 pl-11 text-sm text-white/60">
+                Keress terméket, kategóriát vagy kulcsszót...
+              </div>
+              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {["Elektronika", "Jármű", "Otthon", "Sport"].map((item) => (
+                <div
+                  key={item}
+                  className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/75"
+                >
+                  {item}
                 </div>
+              ))}
+            </div>
+          </div>
 
-                <div className="relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-black/20">
-                  <img
-                    src="/landing-bg.png"
-                    alt="Licitera előnézet"
-                    className="h-[280px] w-full object-cover object-top sm:h-[380px] lg:h-[520px] xl:h-[620px]"
-                  />
-
-                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(6,8,22,0)_55%,rgba(6,8,22,0.5)_100%)]" />
-
-                  <button
-                    type="button"
-                    onClick={() => setShowPreviewZoom(true)}
-                    className="absolute bottom-4 right-4 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-xl backdrop-blur-xl transition hover:bg-white/15"
-                  >
-                    Nagyítás
-                  </button>
-
-                  <div className="absolute left-4 top-4 flex max-w-[86%] flex-wrap gap-2">
-                    <div className="rounded-full border border-white/15 bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur">
-                      AI-alapú feladás
+          <div className="space-y-3 px-4 pb-4">
+            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-3">
+              <div className="relative overflow-hidden rounded-[1.2rem] bg-gradient-to-br from-slate-800 to-slate-700 p-3">
+                <div className="absolute right-3 top-3 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-slate-900">
+                  KIEMELT
+                </div>
+                <div className="aspect-[16/10] rounded-[1rem] bg-[linear-gradient(135deg,#1e293b,#334155,#475569)]" />
+                <div className="mt-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-bold text-white">PlayStation 5 Slim</div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-white/55">
+                      <span className="rounded-full bg-white/10 px-2 py-1">Pest · Cegléd</span>
+                      <span className="rounded-full bg-white/10 px-2 py-1">Személyes + posta</span>
                     </div>
-                    <div className="rounded-full border border-white/15 bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur">
-                      Mobil first
-                    </div>
-                    <div className="rounded-full border border-white/15 bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur">
-                      Élő licitélmény
-                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-black/25 px-3 py-2 text-right">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-white/40">Hátra</div>
+                    <div className="mt-1 text-sm font-semibold text-white">2 ó 14 p</div>
                   </div>
                 </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
-                      <Zap className="h-3.5 w-3.5" />
-                      Cél
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-white/72">
-                      Magyarország legjobb, legmodernebb és legegyszerűbben használható licites weboldalát építjük.
-                    </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl bg-black/25 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-white/40">Jelenlegi licit</div>
+                    <div className="mt-1 text-lg font-black text-white">112 000 Ft</div>
                   </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
-                      <MessageSquareMore className="h-3.5 w-3.5" />
-                      Indulás előtt
+                  <div className="rounded-2xl bg-black/25 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-white/40">Licitek</div>
+                    <div className="mt-1 flex items-center gap-1 text-lg font-black text-white">
+                      <Gavel className="h-4 w-4" />
+                      19
                     </div>
-                    <div className="mt-2 text-sm leading-6 text-white/72">
-                      Minden fő flow-t csiszolunk: UI, UX, mobil élmény, számlázás, értesítések, bizalom és sebesség.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.10] to-white/[0.04] p-4">
-                    <div className="text-xs uppercase tracking-[0.16em] text-white/40">Feladás</div>
-                    <div className="mt-2 text-sm font-semibold text-white">AI + egyszerűsített flow</div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.10] to-white/[0.04] p-4">
-                    <div className="text-xs uppercase tracking-[0.16em] text-white/40">Licitálás</div>
-                    <div className="mt-2 text-sm font-semibold text-white">valós idejű és tiszta</div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.10] to-white/[0.04] p-4">
-                    <div className="text-xs uppercase tracking-[0.16em] text-white/40">Bizalom</div>
-                    <div className="mt-2 text-sm font-semibold text-white">értékelések + hitelesítés</div>
                   </div>
                 </div>
               </div>
             </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
+                  <Brain className="h-4 w-4" />
+                  AI feladás
+                </div>
+                <div className="mt-3 rounded-2xl bg-gradient-to-r from-blue-500/15 to-fuchsia-500/15 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white">
+                      <Camera className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white">Fotó feltöltve</div>
+                      <div className="text-xs text-white/55">
+                        Felismerve: gamer konzol · kategória javaslat kész
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-xl bg-black/20 px-3 py-2 text-xs text-white/70">
+                      Címjavaslat: PlayStation 5 Slim, kiváló állapot
+                    </div>
+                    <div className="rounded-xl bg-black/20 px-3 py-2 text-xs text-white/70">
+                      Kategória: Elektronika / Konzolok
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
+                  <BellRing className="h-4 w-4" />
+                  Értesítések
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  <div className="rounded-2xl bg-white/5 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 h-2.5 w-2.5 rounded-full bg-blue-400" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white">Túllicitáltak</div>
+                        <div className="mt-1 text-xs leading-5 text-white/55">
+                          A Nike Air Max aukciódban új ajánlat érkezett.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/5 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white">Nyert aukció</div>
+                        <div className="mt-1 text-xs leading-5 text-white/55">
+                          Megnyerted a GoPro Hero 12 licitet.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/5 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 h-2.5 w-2.5 rounded-full bg-fuchsia-400" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white">Kategória figyelés</div>
+                        <div className="mt-1 text-xs leading-5 text-white/55">
+                          Új aukció érkezett az Elektronika kategóriába.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
+                <LayoutDashboard className="h-4 w-4" />
+                Dashboard
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-white/35">Aktív aukció</div>
+                  <div className="mt-1 text-lg font-black text-white">12</div>
+                </div>
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-white/35">Megnyert</div>
+                  <div className="mt-1 text-lg font-black text-white">4</div>
+                </div>
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-white/35">Értékelés</div>
+                  <div className="mt-1 flex items-center gap-1 text-lg font-black text-white">
+                    <Star className="h-4 w-4 fill-current text-amber-300" />
+                    4.9
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-white/35">Egyenleg</div>
+                  <div className="mt-1 text-lg font-black text-white">0 Ft</div>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
+              <BadgeCheck className="h-4 w-4" />
+              Mit mutat ez?
+            </div>
+            <div className="mt-2 text-sm leading-6 text-white/72">
+              Valódi apphangulatú mockup: főképernyő, aukciókártyák, AI-segített feladás,
+              licit és értesítési élmény egyetlen preview-ban.
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/40">
+              <MessageSquareMore className="h-4 w-4" />
+              Miért jobb ez?
+            </div>
+            <div className="mt-2 text-sm leading-6 text-white/72">
+              Sokkal többet ad vissza a végső vízióból, mint egy statikus screenshot: látszik a flow, a hierarchia és a termékélmény.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
         </section>
 
         {/* PLATFORM HIGHLIGHTS */}
