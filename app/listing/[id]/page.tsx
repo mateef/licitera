@@ -1611,7 +1611,38 @@ export default function ListingDetailPage() {
                         </AlertDialogContent>
                       </AlertDialog>
                     )}
+                    {sessionUserId && !isOwner && !status.ended && (
+  <Button
+    variant="outline"
+    className="h-12 w-full rounded-xl"
+    onClick={async () => {
+      try {
+        const res = await fetch("/api/chat/get-or-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listingId,
+            sellerId: listing.user_id,
+          }),
+        });
 
+        const data = await res.json();
+
+        if (!res.ok) {
+          toast.error(data?.error || "Nem sikerült megnyitni a chatet.");
+          return;
+        }
+
+        window.location.href = `/chat/${data.threadId}`;
+      } catch (e: any) {
+        toast.error("Chat hiba");
+      }
+    }}
+  >
+    <MessageSquare className="mr-2 h-4 w-4" />
+    Kapcsolat az eladóval
+  </Button>
+)}
                     {!sessionUserId ? (
                       <p className="text-xs text-muted-foreground">
                         Licitáláshoz be kell jelentkezni:{" "}
