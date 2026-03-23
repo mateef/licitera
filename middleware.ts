@@ -13,6 +13,10 @@ export function middleware(req: NextRequest) {
   "/api/stripe/webhook",
   "/favicon.ico",
   "/api/stripe/customer-portal",
+  "/api/stripe/change-subscription-plan",
+  "/api/stripe/create-balance-topup-checkout",
+  "/api/stripe/create-subscription-checkout",
+  "/api/stripe/subscription-status",
   "/api/stripe",
 ];
 
