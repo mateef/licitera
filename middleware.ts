@@ -13,6 +13,7 @@ export function middleware(req: NextRequest) {
   "/api/stripe/webhook",
   "/favicon.ico",
   "/api/stripe/customer-portal",
+  "/api/stripe",
 ];
 
   const isPublic =
