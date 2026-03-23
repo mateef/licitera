@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const returnUrl = body?.returnUrl as string | undefined;
+    const requestedReturnUrl = typeof body?.returnUrl === "string" ? body.returnUrl.trim() : "";
 
     const { data: profile, error } = await supabaseAdmin
       .from("profiles")
@@ -53,11 +53,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const finalReturnUrl = returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/billing`;
+    const fallbackReturnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/billing`;
+    const returnUrl = requestedReturnUrl || fallbackReturnUrl;
 
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
-      return_url: finalReturnUrl,
+      return_url: returnUrl,
     });
 
     return NextResponse.json({ url: session.url });

@@ -40,8 +40,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const tier = body?.tier as "standard" | "pro";
-    const successUrl = body?.successUrl as string | undefined;
-    const cancelUrl = body?.cancelUrl as string | undefined;
+    const requestedSuccessUrl =
+      typeof body?.successUrl === "string" ? body.successUrl.trim() : "";
+    const requestedCancelUrl =
+      typeof body?.cancelUrl === "string" ? body.cancelUrl.trim() : "";
 
     if (!tier || !["standard", "pro"].includes(tier)) {
       return NextResponse.json({ error: "Érvénytelen csomag." }, { status: 400 });
@@ -125,9 +127,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const defaultBaseUrl = process.env.NEXT_PUBLIC_APP_URL!;
-    const finalSuccessUrl = successUrl || `${defaultBaseUrl}/billing?stripe=success`;
-    const finalCancelUrl = cancelUrl || `${defaultBaseUrl}/billing?stripe=cancel`;
+    const fallbackSuccessUrl = `${process.env.NEXT_PUBLIC_APP_URL}/billing?stripe=success`;
+    const fallbackCancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/billing?stripe=cancel`;
+
+    const successUrl = requestedSuccessUrl || fallbackSuccessUrl;
+    const cancelUrl = requestedCancelUrl || fallbackCancelUrl;
 
     const session = await stripe.checkout.sessions.create(
       {
@@ -144,8 +148,8 @@ export async function POST(req: NextRequest) {
             quantity: 1,
           },
         ],
-        success_url: finalSuccessUrl,
-        cancel_url: finalCancelUrl,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         metadata: {
           user_id: user.id,
           tier,

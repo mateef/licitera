@@ -32,8 +32,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const successUrl = body?.successUrl as string | undefined;
-    const cancelUrl = body?.cancelUrl as string | undefined;
+
+    // ✅ FONTOS: string ellenőrzés + trim
+    const requestedSuccessUrl =
+      typeof body?.successUrl === "string" ? body.successUrl.trim() : "";
+
+    const requestedCancelUrl =
+      typeof body?.cancelUrl === "string" ? body.cancelUrl.trim() : "";
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
@@ -119,8 +124,13 @@ export async function POST(req: NextRequest) {
     }
 
     const defaultBaseUrl = process.env.NEXT_PUBLIC_APP_URL!;
-    const finalSuccessUrl = successUrl || `${defaultBaseUrl}/billing?topup=success`;
-    const finalCancelUrl = cancelUrl || `${defaultBaseUrl}/billing?topup=cancel`;
+
+    // ✅ EZ A LÉNYEG: mobil deep link prioritás
+    const finalSuccessUrl =
+      requestedSuccessUrl || `${defaultBaseUrl}/billing?topup=success`;
+
+    const finalCancelUrl =
+      requestedCancelUrl || `${defaultBaseUrl}/billing?topup=cancel`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
