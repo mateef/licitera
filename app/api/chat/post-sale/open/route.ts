@@ -1,193 +1,170 @@
-import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseAdmin = createClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-type ProfileRow = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  phone: string | null;
-  public_display_name: string | null;
-};
+function toPublicName(fullName: string | null | undefined) {
+  if (!fullName) return "Ismeretlen felhasználó";
 
-async function getUserFromBearerToken(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const token = authHeader?.replace("Bearer ", "");
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "Ismeretlen felhasználó";
+  if (parts.length === 1) return parts[0];
 
-  if (!token) return null;
-
-  const {
-    data: { user },
-    error,
-  } = await supabaseAdmin.auth.getUser(token);
-
-  if (error || !user) return null;
-
-  return user;
+  return `${parts[parts.length - 1]} ${parts[0].charAt(0).toUpperCase()}.`;
 }
 
-function displayName(profile: ProfileRow | null | undefined) {
-  if (!profile) return "Ismeretlen felhasználó";
-  return profile.public_display_name || profile.full_name || "Ismeretlen felhasználó";
-}
-
-function buildContactMessage(label: string, profile: ProfileRow | null | undefined) {
-  return [
-    `🔐 Kapcsolattartási adatok — ${label}`,
-    `Név: ${displayName(profile)}`,
-    `Email: ${profile?.email || "Nincs megadva"}`,
-    `Telefonszám: ${profile?.phone || "Nincs megadva"}`,
-  ].join("\n");
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const user = await getUserFromBearerToken(req);
+    const authHeader = req.headers.get("authorization") || "";
+    const accessToken = authHeader.replace("Bearer ", "").trim();
 
-    if (!user) {
-      return NextResponse.json({ error: "Nincs jogosultság." }, { status: 401 });
+    if (!accessToken) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const anon = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await anon.auth.getUser();
+
+    if (userError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json().catch(() => null);
     const listingId = String(body?.listingId ?? "").trim();
 
     if (!listingId) {
-      return NextResponse.json({ error: "Hiányzik a listingId." }, { status: 400 });
+      return Response.json({ error: "Hiányzik a listingId." }, { status: 400 });
     }
 
-    const { data: listing, error: listingError } = await supabaseAdmin
+    const { data: listing, error: listingError } = await supabase
       .from("listings")
-      .select("id,title,user_id,winner_user_id,closed_at,is_active")
+      .select("id,title,user_id,winner_user_id,final_price,buy_now_price,closed_at,is_active")
       .eq("id", listingId)
-      .maybeSingle();
+      .single();
 
     if (listingError || !listing) {
-      return NextResponse.json(
+      return Response.json(
         { error: listingError?.message || "A hirdetés nem található." },
         { status: 404 }
       );
     }
 
-    if (!listing.closed_at || listing.is_active) {
-      return NextResponse.json(
-        { error: "Chat csak lezárt aukció után nyitható." },
-        { status: 400 }
-      );
-    }
-
     if (!listing.user_id || !listing.winner_user_id) {
-      return NextResponse.json(
-        { error: "Ehhez az aukcióhoz nincs elérhető eladó/nyertes pár." },
+      return Response.json(
+        { error: "A tranzakció még nem teljes, hiányzik az eladó vagy a vevő." },
         { status: 400 }
       );
     }
 
-    const isSeller = user.id === listing.user_id;
-    const isWinner = user.id === listing.winner_user_id;
+    const isParticipant =
+      user.id === listing.user_id || user.id === listing.winner_user_id;
 
-    if (!isSeller && !isWinner) {
-      return NextResponse.json(
-        { error: "Ehhez a beszélgetéshez nincs hozzáférésed." },
+    if (!isParticipant) {
+      return Response.json(
+        { error: "Ehhez a tranzakcióhoz nincs hozzáférésed." },
         { status: 403 }
       );
     }
 
-    let { data: existingThread, error: threadFindError } = await supabaseAdmin
+    const sellerId = listing.user_id;
+    const buyerId = listing.winner_user_id;
+
+    const { data: existingThread, error: existingError } = await supabase
       .from("chat_threads")
       .select("id")
       .eq("listing_id", listing.id)
-      .eq("seller_id", listing.user_id)
-      .eq("buyer_id", listing.winner_user_id)
+      .eq("seller_id", sellerId)
+      .eq("buyer_id", buyerId)
       .maybeSingle();
 
-    if (threadFindError) {
-      return NextResponse.json({ error: threadFindError.message }, { status: 500 });
+    if (existingError) {
+      return Response.json({ error: existingError.message }, { status: 500 });
     }
 
-    if (!existingThread) {
-      const { data: insertedThread, error: insertThreadError } = await supabaseAdmin
+    let threadId = existingThread?.id as string | undefined;
+
+    if (!threadId) {
+      const { data: createdThread, error: createThreadError } = await supabase
         .from("chat_threads")
         .insert({
           listing_id: listing.id,
-          seller_id: listing.user_id,
-          buyer_id: listing.winner_user_id,
+          seller_id: sellerId,
+          buyer_id: buyerId,
         })
         .select("id")
         .single();
 
-      if (insertThreadError || !insertedThread) {
-        return NextResponse.json(
-          { error: insertThreadError?.message || "Nem sikerült létrehozni a chatet." },
+      if (createThreadError || !createdThread) {
+        return Response.json(
+          { error: createThreadError?.message || "Nem sikerült létrehozni a chat threadet." },
           { status: 500 }
         );
       }
 
-      existingThread = insertedThread;
-    }
+      threadId = createdThread.id;
 
-    const threadId = existingThread.id as string;
-
-    const { data: existingMessages, error: existingMessagesError } = await supabaseAdmin
-      .from("chat_messages")
-      .select("id")
-      .eq("thread_id", threadId)
-      .limit(1);
-
-    if (existingMessagesError) {
-      return NextResponse.json({ error: existingMessagesError.message }, { status: 500 });
-    }
-
-    if (!existingMessages || existingMessages.length === 0) {
-      const { data: profiles, error: profilesError } = await supabaseAdmin
+      const { data: profiles } = await supabase
         .from("profiles")
         .select("id,full_name,email,phone,public_display_name")
-        .in("id", [listing.user_id, listing.winner_user_id]);
+        .in("id", [sellerId, buyerId]);
 
-      if (profilesError) {
-        return NextResponse.json({ error: profilesError.message }, { status: 500 });
-      }
+      const seller = (profiles ?? []).find((x: any) => x.id === sellerId);
+      const buyer = (profiles ?? []).find((x: any) => x.id === buyerId);
 
-      const seller = (profiles ?? []).find((p: any) => p.id === listing.user_id) as ProfileRow | undefined;
-      const buyer = (profiles ?? []).find((p: any) => p.id === listing.winner_user_id) as ProfileRow | undefined;
+      const sellerName =
+        seller?.public_display_name || toPublicName(seller?.full_name);
+      const buyerName =
+        buyer?.public_display_name || toPublicName(buyer?.full_name);
 
-      const introMessages = [
+      const finalPrice = Number(
+        listing.final_price ?? listing.buy_now_price ?? 0
+      );
+
+      const formattedPrice =
+        new Intl.NumberFormat("hu-HU").format(finalPrice) + " Ft";
+
+      await supabase.from("chat_messages").insert([
         {
           thread_id: threadId,
-          sender_id: listing.user_id,
-          message: `✅ Sikeres tranzakció: ${listing.title}`,
+          sender_id: sellerId,
+          message:
+            `✅ Sikeres tranzakció: ${listing.title}\nVégső ár: ${formattedPrice}`,
         },
         {
           thread_id: threadId,
-          sender_id: listing.user_id,
-          message: buildContactMessage("Eladó", seller),
+          sender_id: sellerId,
+          message:
+            `🔐 Kapcsolattartási adatok\n\n` +
+            `Eladó: ${sellerName}\n` +
+            `Email: ${seller?.email ?? "Nincs megadva"}\n` +
+            `Telefon: ${seller?.phone ?? "Nincs megadva"}\n\n` +
+            `Vevő: ${buyerName}\n` +
+            `Email: ${buyer?.email ?? "Nincs megadva"}\n` +
+            `Telefon: ${buyer?.phone ?? "Nincs megadva"}`,
         },
-        {
-          thread_id: threadId,
-          sender_id: listing.winner_user_id,
-          message: buildContactMessage("Vevő", buyer),
-        },
-      ];
-
-      const { error: introInsertError } = await supabaseAdmin
-        .from("chat_messages")
-        .insert(introMessages);
-
-      if (introInsertError) {
-        return NextResponse.json({ error: introInsertError.message }, { status: 500 });
-      }
+      ]);
     }
 
-    return NextResponse.json({
-      success: true,
-      threadId,
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "Nem sikerült megnyitni a post-sale chatet." },
+    return Response.json({ threadId });
+  } catch (e: any) {
+    return Response.json(
+      { error: e?.message || "Váratlan post-sale chat hiba." },
       { status: 500 }
     );
   }
