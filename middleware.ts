@@ -12,6 +12,7 @@ export function middleware(req: NextRequest) {
   "/api/waitlist-count",
   "/api/stripe/webhook",
   "/favicon.ico",
+  "/api/stripe/customer-portal",
 ];
 
   const isPublic =
