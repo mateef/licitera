@@ -40,6 +40,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const tier = body?.tier as "standard" | "pro";
+    const successUrl = body?.successUrl as string | undefined;
+    const cancelUrl = body?.cancelUrl as string | undefined;
 
     if (!tier || !["standard", "pro"].includes(tier)) {
       return NextResponse.json({ error: "Érvénytelen csomag." }, { status: 400 });
@@ -123,6 +125,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const defaultBaseUrl = process.env.NEXT_PUBLIC_APP_URL!;
+    const finalSuccessUrl = successUrl || `${defaultBaseUrl}/billing?stripe=success`;
+    const finalCancelUrl = cancelUrl || `${defaultBaseUrl}/billing?stripe=cancel`;
+
     const session = await stripe.checkout.sessions.create(
       {
         mode: "subscription",
@@ -138,8 +144,8 @@ export async function POST(req: NextRequest) {
             quantity: 1,
           },
         ],
-        success_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?stripe=success`,
-        cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing?stripe=cancel`,
+        success_url: finalSuccessUrl,
+        cancel_url: finalCancelUrl,
         metadata: {
           user_id: user.id,
           tier,

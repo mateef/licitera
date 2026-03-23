@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nincs jogosultság." }, { status: 401 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const successUrl = body?.successUrl as string | undefined;
+    const cancelUrl = body?.cancelUrl as string | undefined;
+
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("id,email,full_name,stripe_customer_id")
@@ -53,12 +57,6 @@ export async function POST(req: NextRequest) {
 
     const rawBalance = Number((balanceRow as any)?.balance_amount ?? 0);
 
-    console.log("BALANCE TOPUP DEBUG", {
-      userId: user.id,
-      rawBalance,
-      balanceRow,
-    });
-
     if (!Number.isFinite(rawBalance)) {
       return NextResponse.json(
         { error: "Érvénytelen egyenleg érték az adatbázisban." },
@@ -73,16 +71,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // A jelenlegi projektedben ez a működő Stripe HUF beállítás:
-    // 200 Ft => 20000, 2000 Ft => 200000
     const amountInHuf = Math.round(Math.abs(rawBalance));
     const stripeUnitAmount = amountInHuf * 100;
-
-    console.log("BALANCE TOPUP AMOUNT", {
-      rawBalance,
-      amountInHuf,
-      stripeUnitAmount,
-    });
 
     if (amountInHuf < 175) {
       return NextResponse.json(
@@ -128,14 +118,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL!;
-
-    console.log("BALANCE TOPUP CREATE SESSION INPUT", {
-      customerId: stripeCustomerId,
-      amountInHuf,
-      stripeUnitAmount,
-      baseUrl,
-    });
+    const defaultBaseUrl = process.env.NEXT_PUBLIC_APP_URL!;
+    const finalSuccessUrl = successUrl || `${defaultBaseUrl}/billing?topup=success`;
+    const finalCancelUrl = cancelUrl || `${defaultBaseUrl}/billing?topup=cancel`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -159,8 +144,8 @@ export async function POST(req: NextRequest) {
           quantity: 1,
         },
       ],
-      success_url: `${baseUrl}/billing?topup=success`,
-      cancel_url: `${baseUrl}/billing?topup=cancel`,
+      success_url: finalSuccessUrl,
+      cancel_url: finalCancelUrl,
       metadata: {
         type: "balance_topup",
         user_id: user.id,

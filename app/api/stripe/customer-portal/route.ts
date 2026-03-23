@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nincs jogosultság." }, { status: 401 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const returnUrl = body?.returnUrl as string | undefined;
+
     const { data: profile, error } = await supabaseAdmin
       .from("profiles")
       .select("stripe_customer_id")
@@ -50,9 +53,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const finalReturnUrl = returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/billing`;
+
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing`,
+      return_url: finalReturnUrl,
     });
 
     return NextResponse.json({ url: session.url });
