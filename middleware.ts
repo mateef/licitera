@@ -21,6 +21,9 @@ export function middleware(req: NextRequest) {
   "/api/chat/post-sale/open",
   "/api/notifications/chat-message",
   "/api/notifications/buy-now",
+  "/api/ai/image-listing",
+  "/api/ai/category-suggest",
+  "/api/ai/listing-suggest",
 ];
 
   const isPublic =
