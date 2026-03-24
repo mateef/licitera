@@ -20,7 +20,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ImageIcon, MapPin, Sparkles, Star, Truck } from "lucide-react";
+import {
+  CheckCircle2,
+  ImageIcon,
+  MapPin,
+  Sparkles,
+  Star,
+  Truck,
+} from "lucide-react";
 
 type Category = {
   id: string;
@@ -33,6 +40,10 @@ type Category = {
 type SettlementItem = {
   city: string;
   county: string;
+};
+
+type CreatedListingRow = {
+  id: string;
 };
 
 const settlementItems = settlements as SettlementItem[];
@@ -69,7 +80,10 @@ export default function CreateListingPage() {
   const [aiImageLoading, setAiImageLoading] = useState(false);
   const [aiReason, setAiReason] = useState("");
 
-  const finalCategoryId = useMemo(() => catL3 || catL2 || catL1 || "", [catL1, catL2, catL3]);
+  const finalCategoryId = useMemo(
+    () => catL3 || catL2 || catL1 || "",
+    [catL1, catL2, catL3]
+  );
 
   const sp = useMemo(() => Number(startingPrice), [startingPrice]);
   const inc = useMemo(() => Number(minIncrement), [minIncrement]);
@@ -82,7 +96,9 @@ export default function CreateListingPage() {
 
   const filteredCounties = useMemo(() => {
     const q = countyQuery.trim().toLocaleLowerCase("hu");
-    const base = [...HUNGARIAN_COUNTIES].sort((a, b) => a.localeCompare(b, "hu"));
+    const base = [...HUNGARIAN_COUNTIES].sort((a, b) =>
+      a.localeCompare(b, "hu")
+    );
 
     if (!q) return base.slice(0, 8);
 
@@ -104,7 +120,6 @@ export default function CreateListingPage() {
     const q = cityQuery.trim().toLocaleLowerCase("hu");
 
     if (!county) return [];
-
     if (!q) return availableCities.slice(0, 10);
 
     return availableCities
@@ -126,12 +141,18 @@ export default function CreateListingPage() {
     if (!county) return false;
     if (!city) return false;
     if (!deliveryMode) return false;
+    if (!finalCategoryId) return false;
     if (!Number.isFinite(sp) || sp <= 0) return false;
     if (!Number.isFinite(inc) || inc <= 0) return false;
     if (!Number.isFinite(hours) || hours <= 0 || hours > 72) return false;
-    if (buyNow !== null && (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)) return false;
+    if (
+      buyNow !== null &&
+      (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)
+    )
+      return false;
+
     return true;
-  }, [title, county, city, deliveryMode, sp, inc, hours, buyNow]);
+  }, [title, county, city, deliveryMode, finalCategoryId, sp, inc, hours, buyNow]);
 
   function safeFileName(name: string) {
     return name
@@ -269,7 +290,9 @@ export default function CreateListingPage() {
         return;
       }
 
-      const { data: pub } = supabase.storage.from("listing-images").getPublicUrl(tempPath);
+      const { data: pub } = supabase.storage
+        .from("listing-images")
+        .getPublicUrl(tempPath);
       const imageUrl = pub.publicUrl;
 
       const res = await fetch("/api/ai/image-listing", {
@@ -314,8 +337,11 @@ export default function CreateListingPage() {
     if (!county) return toast.error("Válassz vármegyét.");
     if (!city) return toast.error("Válassz települést.");
     if (!deliveryMode) return toast.error("Válassz átvételi módot.");
-    if (!Number.isFinite(sp) || sp <= 0) return toast.error("A kezdőár legyen 0-nál nagyobb.");
-    if (!Number.isFinite(inc) || inc <= 0) return toast.error("A licitlépcső legyen 0-nál nagyobb.");
+    if (!finalCategoryId) return toast.error("Válassz kategóriát.");
+    if (!Number.isFinite(sp) || sp <= 0)
+      return toast.error("A kezdőár legyen 0-nál nagyobb.");
+    if (!Number.isFinite(inc) || inc <= 0)
+      return toast.error("A licitlépcső legyen 0-nál nagyobb.");
 
     if (!Number.isFinite(hours) || hours <= 0) {
       return toast.error("Az időtartam legyen 0-nál nagyobb.");
@@ -378,55 +404,68 @@ export default function CreateListingPage() {
         (balanceRow as { balance_amount?: number } | null)?.balance_amount ?? 0
       );
 
-      if (balanceAmount < 0) {
+      if (balanceAmount < -175) {
         toast.error(
-          `Az egyenleged negatív (${new Intl.NumberFormat("hu-HU").format(balanceAmount)} Ft), ezért új aukciót most nem tudsz indítani.`
+          `Az egyenleged túl alacsony (${new Intl.NumberFormat("hu-HU").format(
+            balanceAmount
+          )} Ft), ezért új aukciót most nem tudsz indítani.`
         );
         return;
       }
 
       const endsAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
-      const { data: created, error: createErr } = await supabase
-        .from("listings")
-        .insert({
-          user_id: uid,
-          category_id: finalCategoryId || null,
-          title: title.trim(),
-          description: description.trim() || null,
-          starting_price: sp,
-          current_price: sp,
-          min_increment: inc,
-          ends_at: endsAt,
-          is_active: true,
-          county,
-          city,
-          delivery_mode: deliveryMode,
-          buy_now_price: buyNow,
-        })
-        .select("id")
-        .single();
+      const { data: created, error: createErr } = await supabase.rpc(
+        "create_listing_with_quota",
+        {
+          p_category_id: finalCategoryId || null,
+          p_title: title.trim(),
+          p_description: description.trim() || null,
+          p_starting_price: sp,
+          p_current_price: sp,
+          p_min_increment: inc,
+          p_ends_at: endsAt,
+          p_county: county,
+          p_city: city,
+          p_delivery_mode: deliveryMode,
+          p_buy_now_price: buyNow,
+        }
+      );
 
       if (createErr) {
-  const rawMessage = createErr.message || "Nem sikerült létrehozni az aukciót.";
+        const rawMessage =
+          createErr.message || "Nem sikerült létrehozni az aukciót.";
 
-  if (rawMessage.includes("NEGATIVE_BALANCE_BLOCKED")) {
-    toast.error("Az egyenleged negatív, ezért új aukciót most nem tudsz indítani.");
-    return;
-  }
+        if (rawMessage.includes("NEGATIVE_BALANCE_BLOCKED")) {
+          toast.error(
+            "Az egyenleged -175 Ft alatt van, ezért új aukciót most nem tudsz indítani."
+          );
+          return;
+        }
 
-  toast.error(rawMessage);
-  return;
-}
+        toast.error(rawMessage);
+        return;
+      }
 
-      const listingId = created.id as string;
+      const createdRow = created as CreatedListingRow | CreatedListingRow[] | null;
+      const listingId = Array.isArray(createdRow)
+        ? createdRow[0]?.id
+        : createdRow?.id;
+
+      if (!listingId) {
+        toast.error("Hiányzik a létrehozott aukció azonosítója.");
+        return;
+      }
 
       const uploadedUrls: string[] = [];
       const uploadedPaths: string[] = [];
 
       if (files.length > 0) {
         const orderedFiles = [...files];
-        const safeFeaturedIndex = Math.min(featuredImageIndex, orderedFiles.length - 1);
+        const safeFeaturedIndex = Math.min(
+          featuredImageIndex,
+          orderedFiles.length - 1
+        );
 
         if (safeFeaturedIndex > 0) {
           const [featured] = orderedFiles.splice(safeFeaturedIndex, 1);
@@ -448,7 +487,9 @@ export default function CreateListingPage() {
           }
 
           uploadedPaths.push(path);
-          const { data: pub } = supabase.storage.from("listing-images").getPublicUrl(path);
+          const { data: pub } = supabase.storage
+            .from("listing-images")
+            .getPublicUrl(path);
           uploadedUrls.push(pub.publicUrl);
         }
       }
@@ -468,7 +509,6 @@ export default function CreateListingPage() {
       toast.success("Aukció létrehozva ✅");
       router.push(`/listing/${listingId}`);
       router.refresh();
-      return;
     } finally {
       setSubmitting(false);
     }
@@ -488,7 +528,8 @@ export default function CreateListingPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-              Tölts fel jó képeket, válaszd ki a főkategóriát, add meg a helyszínt és indítsd el az aukciót prémium megjelenéssel.
+              Tölts fel jó képeket, válaszd ki a főkategóriát, add meg a helyszínt
+              és indítsd el az aukciót prémium megjelenéssel.
             </p>
           </div>
 
@@ -512,7 +553,8 @@ export default function CreateListingPage() {
             <CardHeader>
               <CardTitle>Termék és aukció adatai</CardTitle>
               <CardDescription>
-                Tölts fel képet, válaszd ki a főképét, kérj AI segítséget, majd ellenőrizd az adatokat.
+                Tölts fel képet, válaszd ki a főképét, kérj AI segítséget, majd
+                ellenőrizd az adatokat.
               </CardDescription>
             </CardHeader>
 
@@ -530,7 +572,8 @@ export default function CreateListingPage() {
                   />
 
                   <p className="text-xs text-muted-foreground">
-                    Tipp: 3–6 kép ideális, jó fényben, több szögből. A kiválasztott főkép fog elöl megjelenni a hirdetésben.
+                    Tipp: 3–6 kép ideális, jó fényben, több szögből. A kiválasztott
+                    főkép fog elöl megjelenni a hirdetésben.
                   </p>
 
                   {featuredPreviewUrl ? (
@@ -555,7 +598,9 @@ export default function CreateListingPage() {
 
                   {previewUrls.length > 0 ? (
                     <div className="space-y-2">
-                      <div className="text-xs font-medium text-slate-600">Válaszd ki a főképét</div>
+                      <div className="text-xs font-medium text-slate-600">
+                        Válaszd ki a főképét
+                      </div>
 
                       <div className="flex gap-3 overflow-auto pb-1">
                         {previewUrls.map((url, index) => (
@@ -601,16 +646,22 @@ export default function CreateListingPage() {
                     disabled={aiImageLoading || files.length === 0}
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
-                    {aiImageLoading ? "AI elemzés folyamatban..." : "AI kitöltés a kiválasztott képből"}
+                    {aiImageLoading
+                      ? "AI elemzés folyamatban..."
+                      : "AI kitöltés a kiválasztott képből"}
                   </Button>
 
                   <p className="text-xs text-muted-foreground">
-                    Az AI a kiválasztott főkép alapján megpróbál címet, leírást és kategóriát javasolni.
+                    Az AI a kiválasztott főkép alapján megpróbál címet, leírást és
+                    kategóriát javasolni.
                   </p>
 
                   {aiReason ? (
                     <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                      <span className="font-medium text-slate-900">AI javaslat indoka:</span> {aiReason}
+                      <span className="font-medium text-slate-900">
+                        AI javaslat indoka:
+                      </span>{" "}
+                      {aiReason}
                     </div>
                   ) : null}
                 </div>
@@ -764,10 +815,14 @@ export default function CreateListingPage() {
                   {finalCategoryId ? (
                     <div className="text-xs text-muted-foreground">
                       Kiválasztva:{" "}
-                      <span className="font-medium text-foreground">{selectedCategoryLabel}</span>
+                      <span className="font-medium text-foreground">
+                        {selectedCategoryLabel}
+                      </span>
                     </div>
                   ) : (
-                    <div className="text-xs text-muted-foreground">Nem kötelező, de erősen ajánlott.</div>
+                    <div className="text-xs text-muted-foreground">
+                      Kötelező kiválasztani.
+                    </div>
                   )}
                 </div>
               </div>
@@ -813,7 +868,11 @@ export default function CreateListingPage() {
                 <div className="space-y-2">
                   <Label>Település</Label>
                   <Input
-                    placeholder={county ? "Kezdd el beírni, pl. Cegléd" : "Előbb válassz vármegyét"}
+                    placeholder={
+                      county
+                        ? "Kezdd el beírni, pl. Cegléd"
+                        : "Előbb válassz vármegyét"
+                    }
                     value={cityQuery}
                     onChange={(e) => {
                       setCityQuery(e.target.value);
@@ -864,9 +923,7 @@ export default function CreateListingPage() {
           <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)] lg:sticky lg:top-24">
             <CardHeader>
               <CardTitle className="text-base">Összefoglaló</CardTitle>
-              <CardDescription>
-                Így fog megjelenni az oldalon.
-              </CardDescription>
+              <CardDescription>Így fog megjelenni az oldalon.</CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4 text-sm">
@@ -904,14 +961,18 @@ export default function CreateListingPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-slate-50 p-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Licitlépcső</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Licitlépcső
+                  </div>
                   <div className="mt-1 font-semibold text-slate-900">
                     {Number.isFinite(inc) ? formatHuf(inc) : "-"}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-slate-50 p-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Időtartam</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Időtartam
+                  </div>
                   <div className="mt-1 font-semibold text-slate-900">
                     {Number.isFinite(hours) ? `${Math.min(hours, 72)} óra` : "-"}
                   </div>
@@ -919,16 +980,22 @@ export default function CreateListingPage() {
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Következő minimum</div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">
+                  Következő minimum
+                </div>
                 <div className="mt-1 font-semibold text-slate-900">
-                  {Number.isFinite(sp) && Number.isFinite(inc) ? formatHuf(sp + inc) : "-"}
+                  {Number.isFinite(sp) && Number.isFinite(inc)
+                    ? formatHuf(sp + inc)
+                    : "-"}
                 </div>
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-3">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Villámár</div>
                 <div className="mt-1 font-semibold text-slate-900">
-                  {buyNow !== null && Number.isFinite(buyNow) ? formatHuf(buyNow) : "Nincs megadva"}
+                  {buyNow !== null && Number.isFinite(buyNow)
+                    ? formatHuf(buyNow)
+                    : "Nincs megadva"}
                 </div>
               </div>
 
@@ -956,7 +1023,8 @@ export default function CreateListingPage() {
                 </div>
                 <div className="mt-1 font-semibold text-slate-900">
                   {deliveryMode
-                    ? DELIVERY_MODES.find((x) => x.value === deliveryMode)?.label ?? deliveryMode
+                    ? DELIVERY_MODES.find((x) => x.value === deliveryMode)?.label ??
+                      deliveryMode
                     : "Nincs megadva"}
                 </div>
               </div>
