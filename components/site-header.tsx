@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { MessageCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -170,7 +171,6 @@ export function SiteHeader() {
           isCompact ? "shadow-[0_8px_30px_rgba(15,23,42,0.06)]" : ""
         }`}
       >
-        {/* TOP INFO BAR */}
         <div
           className={`overflow-hidden transition-all duration-300 ${
             isCompact ? "max-h-0 opacity-0" : "max-h-20 opacity-100"
@@ -223,13 +223,11 @@ export function SiteHeader() {
           <Separator />
         </div>
 
-        {/* MAIN */}
         <div
           className={`mx-auto max-w-6xl px-4 transition-all duration-300 ${
             isCompact ? "py-2" : "py-3"
           }`}
         >
-          {/* ROW 1 */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/listings")}
@@ -257,6 +255,19 @@ export function SiteHeader() {
               <div className="shrink-0">
                 <NotificationsBell />
               </div>
+
+              {sessionUserId ? (
+                <button
+                  onClick={() => router.push("/chat")}
+                  className={`inline-flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] ${
+                    isCompact ? "h-10 w-10" : "h-11 w-11"
+                  }`}
+                  aria-label="Chat"
+                  title="Chat"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </button>
+              ) : null}
 
               {sessionUserId ? (
                 <DropdownMenu>
@@ -295,6 +306,14 @@ export function SiteHeader() {
                     >
                       <User className="mr-2 h-4 w-4" />
                       Profil
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => router.push("/chat")}
+                      className="rounded-xl py-3"
+                    >
+                      <MessageCircle className="mr-2 h-4 w-4" />
+                      Chat
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
@@ -349,7 +368,6 @@ export function SiteHeader() {
             </div>
           </div>
 
-          {/* ROW 2 */}
           <div
             className={`grid overflow-hidden transition-all duration-300 lg:grid-cols-[1fr_auto] ${
               isCompact
@@ -444,7 +462,6 @@ export function SiteHeader() {
             </div>
           </div>
 
-          {/* MOBILE QUICK LINKS FOR GUESTS */}
           {!sessionUserId && !isCompact && (
             <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 sm:hidden">
               <Button
