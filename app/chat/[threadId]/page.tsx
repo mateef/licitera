@@ -77,6 +77,16 @@ export default function ChatThreadPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
+  async function markThreadAsRead(currentUserId: string | null) {
+    if (!threadId || !currentUserId) return;
+
+    await supabase
+      .from("chat_thread_members")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("thread_id", threadId)
+      .eq("user_id", currentUserId);
+  }
+
   async function load() {
     setLoading(true);
 
@@ -131,9 +141,7 @@ export default function ChatThreadPage() {
       setListing((listingRow as ListingRow | null) ?? null);
 
       const p = profileRow as ProfileRow | null;
-      setOtherUserName(
-        p?.public_display_name || toPublicName(p?.full_name)
-      );
+      setOtherUserName(p?.public_display_name || toPublicName(p?.full_name));
     } else {
       setListing(null);
       setOtherUserName("");
@@ -144,6 +152,8 @@ export default function ChatThreadPage() {
     setTimeout(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }, 80);
+
+    await markThreadAsRead(uid);
   }
 
   useEffect(() => {

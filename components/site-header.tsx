@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -42,6 +43,7 @@ export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { unreadLabel, hasUnread } = useUnreadChatCount();
 
   const [search, setSearch] = useState("");
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -259,13 +261,19 @@ export function SiteHeader() {
               {sessionUserId ? (
                 <button
                   onClick={() => router.push("/chat")}
-                  className={`inline-flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] ${
+                  className={`relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] ${
                     isCompact ? "h-10 w-10" : "h-11 w-11"
                   }`}
                   aria-label="Chat"
                   title="Chat"
                 >
                   <MessageCircle className="h-4 w-4" />
+
+                  {hasUnread ? (
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                      {unreadLabel}
+                    </span>
+                  ) : null}
                 </button>
               ) : null}
 
@@ -312,7 +320,14 @@ export function SiteHeader() {
                       onClick={() => router.push("/chat")}
                       className="rounded-xl py-3"
                     >
-                      <MessageCircle className="mr-2 h-4 w-4" />
+                      <div className="relative mr-2">
+                        <MessageCircle className="h-4 w-4" />
+                        {hasUnread ? (
+                          <span className="absolute -right-2 -top-2 inline-flex min-h-[16px] min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black leading-none text-white">
+                            {unreadLabel}
+                          </span>
+                        ) : null}
+                      </div>
                       Chat
                     </DropdownMenuItem>
 
