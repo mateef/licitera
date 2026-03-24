@@ -18,6 +18,9 @@ export function middleware(req: NextRequest) {
   "/api/stripe/create-subscription-checkout",
   "/api/stripe/subscription-status",
   "/api/stripe",
+  "/api/chat/post-sale/open",
+  "/api/notifications/chat-message",
+  "/api/notifications/buy-now",
 ];
 
   const isPublic =
