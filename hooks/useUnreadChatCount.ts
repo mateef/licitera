@@ -1,89 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export function useUnreadChatCount() {
-  const [count, setCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  async function loadCount() {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  async function load() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      const userId = session?.user?.id;
-
-      if (!userId) {
-        setCount(0);
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase.rpc("get_my_unread_chat_count");
-
-      if (error) {
-        setCount(0);
-        setLoading(false);
-        return;
-      }
-
-      setCount(Number(data ?? 0));
-    } finally {
-      setLoading(false);
+    const userId = session?.user?.id;
+    if (!userId) {
+      setUnreadCount(0);
+      return;
     }
+
+    const { data: memberships, error: membershipsError } = await supabase
+      .from("chat_thread_members")
+      .select("thread_id,last_read_at")
+      .eq("user_id", userId);
+
+    if (membershipsError || !memberships) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const counts = await Promise.all(
+      memberships.map(async (row: any) => {
+        const { count, error } = await supabase
+          .from("chat_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("thread_id", row.thread_id)
+          .neq("sender_id", userId)
+          .gt("created_at", row.last_read_at || "1970-01-01T00:00:00.000Z");
+
+        if (error) return 0;
+        return count ?? 0;
+      })
+    );
+
+    setUnreadCount(counts.reduce((sum, value) => sum + value, 0));
   }
 
   useEffect(() => {
-    loadCount();
+    load();
 
-    const authSub = supabase.auth.onAuthStateChange(() => {
-      loadCount();
+    const { data: authSub } = supabase.auth.onAuthStateChange(() => {
+      load();
     });
 
-    const messagesChannel = supabase
-      .channel("web-unread-chat-count-messages")
+    const channel = supabase
+      .channel("web-unread-chat-count")
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-        },
+        { event: "INSERT", schema: "public", table: "chat_messages" },
         async () => {
-          await loadCount();
+          await load();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "chat_thread_members" },
+        async () => {
+          await load();
         }
       )
       .subscribe();
 
-    const membersChannel = supabase
-      .channel("web-unread-chat-count-members")
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "chat_thread_members",
-        },
-        async () => {
-          await loadCount();
-        }
-      )
-      .subscribe();
+    const interval = setInterval(load, 10000);
 
     return () => {
-      authSub.data.subscription.unsubscribe();
-      supabase.removeChannel(messagesChannel);
-      supabase.removeChannel(membersChannel);
+      clearInterval(interval);
+      authSub.subscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, []);
 
-  return {
-    unreadCount: count,
-    unreadLabel: count > 9 ? "9+" : String(count),
-    hasUnread: count > 0,
-    loading,
-    reloadUnreadCount: loadCount,
-  };
+  return useMemo(
+    () => ({
+      unreadCount,
+      unreadLabel: unreadCount > 9 ? "9+" : String(unreadCount),
+      hasUnread: unreadCount > 0,
+    }),
+    [unreadCount]
+  );
 }

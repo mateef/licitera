@@ -42,6 +42,8 @@ export async function POST(req: Request) {
     const senderName = String(body?.senderName || "Új üzenet");
     const threadId = String(body?.threadId || "");
     const listingId = String(body?.listingId || "");
+    const listingTitle = String(body?.listingTitle || "Hirdetés");
+    const messagePreview = String(body?.messagePreview || "");
 
     if (!receiverUserId || !threadId) {
       return NextResponse.json(
@@ -57,10 +59,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (threadError) {
-      return NextResponse.json(
-        { error: threadError.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: threadError.message }, { status: 500 });
     }
 
     if (!thread) {
@@ -84,10 +83,7 @@ export async function POST(req: Request) {
       user.id === thread.seller_id ? thread.buyer_id : thread.seller_id;
 
     if (receiverUserId !== realReceiverUserId) {
-      return NextResponse.json(
-        { error: "Hibás címzett." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Hibás címzett." }, { status: 403 });
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://licitera.hu";
@@ -99,12 +95,15 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         userId: realReceiverUserId,
-        title: "Új üzenet érkezett",
-        message: `${senderName} új üzenetet küldött.`,
+        title: `${senderName} üzent`,
+        message: `${listingTitle} • ${messagePreview || "Új üzenet érkezett."}`,
         data: {
           type: "chat_message",
           threadId,
           listingId: listingId || thread.listing_id || undefined,
+          listingTitle,
+          senderName,
+          messagePreview,
         },
       }),
     });

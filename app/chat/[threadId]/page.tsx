@@ -77,14 +77,30 @@ export default function ChatThreadPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  async function markThreadAsRead(currentUserId: string | null) {
-    if (!threadId || !currentUserId) return;
+  async function markAsRead(threadIdValue: string, userIdValue: string) {
+    const nowIso = new Date().toISOString();
 
-    await supabase
+    const { data: existing } = await supabase
       .from("chat_thread_members")
-      .update({ last_read_at: new Date().toISOString() })
-      .eq("thread_id", threadId)
-      .eq("user_id", currentUserId);
+      .select("thread_id,user_id")
+      .eq("thread_id", threadIdValue)
+      .eq("user_id", userIdValue)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase
+        .from("chat_thread_members")
+        .update({ last_read_at: nowIso })
+        .eq("thread_id", threadIdValue)
+        .eq("user_id", userIdValue);
+      return;
+    }
+
+    await supabase.from("chat_thread_members").insert({
+      thread_id: threadIdValue,
+      user_id: userIdValue,
+      last_read_at: nowIso,
+    });
   }
 
   async function load() {
@@ -142,6 +158,8 @@ export default function ChatThreadPage() {
 
       const p = profileRow as ProfileRow | null;
       setOtherUserName(p?.public_display_name || toPublicName(p?.full_name));
+
+      await markAsRead(resolvedThread.id, uid);
     } else {
       setListing(null);
       setOtherUserName("");
@@ -152,8 +170,6 @@ export default function ChatThreadPage() {
     setTimeout(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }, 80);
-
-    await markThreadAsRead(uid);
   }
 
   useEffect(() => {
@@ -182,10 +198,7 @@ export default function ChatThreadPage() {
     };
   }, [threadId]);
 
-  const canSend = useMemo(
-    () => !!text.trim() && !!userId && !!thread,
-    [text, userId, thread]
-  );
+  const canSend = useMemo(() => !!text.trim() && !!userId && !!thread, [text, userId, thread]);
 
   async function handleSend() {
     if (!canSend || !userId || !threadId) return;
@@ -204,6 +217,7 @@ export default function ChatThreadPage() {
 
     if (!error) {
       setText("");
+      await markAsRead(threadId, userId);
       await load();
     }
   }
@@ -281,7 +295,8 @@ export default function ChatThreadPage() {
           <div className="border-b bg-slate-50/90 px-5 py-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              A beszélgetés elején megjelennek a kapcsolattartási adatok és a tranzakció összegzése.
+              A beszélgetés elején megjelennek a kapcsolattartási adatok és a
+              tranzakció összegzése.
             </div>
           </div>
 

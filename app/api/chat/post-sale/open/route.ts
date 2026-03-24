@@ -119,6 +119,30 @@ export async function POST(req: Request) {
 
       threadId = createdThread.id;
 
+            const nowIso = new Date().toISOString();
+
+      const { error: membersError } = await supabase
+        .from("chat_thread_members")
+        .insert([
+          {
+            thread_id: threadId,
+            user_id: sellerId,
+            last_read_at: nowIso,
+          },
+          {
+            thread_id: threadId,
+            user_id: buyerId,
+            last_read_at: nowIso,
+          },
+        ]);
+
+      if (membersError) {
+        return Response.json(
+          { error: membersError.message || "Nem sikerült létrehozni a chat member sorokat." },
+          { status: 500 }
+        );
+      }
+
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id,full_name,email,phone,public_display_name")
