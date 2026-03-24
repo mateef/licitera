@@ -19,6 +19,34 @@ type ProfileRow = {
 
 export async function POST(req: Request) {
   try {
+    const authHeader = req.headers.get("authorization") || "";
+    const accessToken = authHeader.replace("Bearer ", "").trim();
+
+    if (!accessToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const anon = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await anon.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => null);
     const listingId = String(body?.listingId ?? "").trim();
 
@@ -53,6 +81,16 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Hiányzik az eladó vagy a vevő azonosítója." },
         { status: 400 }
+      );
+    }
+
+    const isParticipant =
+      user.id === listing.user_id || user.id === listing.winner_user_id;
+
+    if (!isParticipant) {
+      return NextResponse.json(
+        { error: "Ehhez a tranzakcióhoz nincs hozzáférésed." },
+        { status: 403 }
       );
     }
 
