@@ -52,6 +52,7 @@ type ReviewRow = {
 };
 
 type SubscriptionTier = "free" | "standard" | "pro";
+type SubscriptionSource = "free" | "stripe" | "app_store" | "play_store";
 
 type BillingEntryRow = {
   id: string;
@@ -128,6 +129,7 @@ export default function ProfilePage() {
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
   const [subscriptionStatus, setSubscriptionStatus] = useState("active");
   const [changingPlan, setChangingPlan] = useState<SubscriptionTier | null>(null);
+  const [subscriptionSource, setSubscriptionSource] = useState<SubscriptionSource>("free");
 
   const [balanceAmount, setBalanceAmount] = useState(0);
   const [currentMonthFeeTotal, setCurrentMonthFeeTotal] = useState(0);
@@ -148,7 +150,6 @@ export default function ProfilePage() {
   const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
   const [usedSuccessfulSales, setUsedSuccessfulSales] = useState(0);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
-  const [subscriptionCancelLoading, setSubscriptionCancelLoading] = useState(false);
   const [nextBillingDate, setNextBillingDate] = useState<string>("");
   const [stripeCustomerPortalUrlLoading, setStripeCustomerPortalUrlLoading] = useState(false);
 
@@ -161,15 +162,15 @@ export default function ProfilePage() {
   }
 
   function formatDisplayDate(value: string | null | undefined) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("hu-HU", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("hu-HU", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
 
   function isLikelyHungarianPhone(value: string) {
     const raw = value
@@ -180,7 +181,7 @@ export default function ProfilePage() {
     return /^\+36\d{9}$/.test(raw) || /^06\d{9}$/.test(raw) || /^36\d{9}$/.test(raw);
   }
 
-    async function handleBalanceTopup() {
+  async function handleBalanceTopup() {
     if (topupLoading) return;
 
     setTopupLoading(true);
@@ -215,10 +216,12 @@ export default function ProfilePage() {
     }
 
     const { data, error } = await supabase
-  .from("profiles")
-  .select("id,full_name,email,phone,phone_verified,profile_image_url,public_display_name,subscription_tier,subscription_status")
-  .eq("id", uid)
-  .maybeSingle();
+      .from("profiles")
+      .select(
+        "id,full_name,email,phone,phone_verified,profile_image_url,public_display_name,subscription_tier,subscription_status"
+      )
+      .eq("id", uid)
+      .maybeSingle();
 
     if (error) {
       setMsg(error.message);
@@ -365,15 +368,16 @@ export default function ProfilePage() {
       .eq("user_id", uid)
       .order("created_at", { ascending: false })
       .limit(8);
-      const { data: quotaRow } = await supabase
-    .from("billing_monthly_quota_usage")
-    .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
-    .eq("user_id", uid)
-    .maybeSingle();
 
-  setMonthlyFreeQuota((quotaRow as any)?.monthly_free_quota ?? 0);
-  setRemainingFreeQuota((quotaRow as any)?.remaining_free_quota ?? 0);
-  setUsedSuccessfulSales((quotaRow as any)?.used_successful_sales ?? 0);
+    const { data: quotaRow } = await supabase
+      .from("billing_monthly_quota_usage")
+      .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
+      .eq("user_id", uid)
+      .maybeSingle();
+
+    setMonthlyFreeQuota((quotaRow as any)?.monthly_free_quota ?? 0);
+    setRemainingFreeQuota((quotaRow as any)?.remaining_free_quota ?? 0);
+    setUsedSuccessfulSales((quotaRow as any)?.used_successful_sales ?? 0);
     setRecentBillingEntries((ledgerRows ?? []) as BillingEntryRow[]);
   }
 
@@ -393,11 +397,11 @@ export default function ProfilePage() {
     }
 
     await loadProfile();
-await loadPendingReviews(uid);
-await loadReviews(uid);
-await loadBillingData(uid);
-await loadStripeSubscriptionStatus(uid);
-setLoading(false);
+    await loadPendingReviews(uid);
+    await loadReviews(uid);
+    await loadBillingData(uid);
+    await loadStripeSubscriptionStatus(uid);
+    setLoading(false);
   }
 
   async function saveProfile() {
@@ -441,15 +445,15 @@ setLoading(false);
       const phoneChanged = oldPhone.trim() !== phone.trim();
 
       const { error } = await supabase
-  .from("profiles")
-  .update({
-    full_name: fullName.trim(),
-    public_display_name: toPublicName(fullName.trim()),
-    email: email.trim().toLowerCase(),
-    phone: phone.trim(),
-    phone_verified: phoneChanged ? false : phoneVerified,
-  })
-  .eq("id", userId);
+        .from("profiles")
+        .update({
+          full_name: fullName.trim(),
+          public_display_name: toPublicName(fullName.trim()),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim(),
+          phone_verified: phoneChanged ? false : phoneVerified,
+        })
+        .eq("id", userId);
 
       if (error) {
         setMsg(error.message);
@@ -472,48 +476,52 @@ setLoading(false);
   }
 
   async function loadStripeSubscriptionStatus(uid: string) {
-  if (!uid) return;
+    if (!uid) return;
 
-  setSubscriptionLoading(true);
+    setSubscriptionLoading(true);
 
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const accessToken = session?.access_token;
+      const accessToken = session?.access_token;
 
-    if (!accessToken) {
-      return;
+      if (!accessToken) {
+        return;
+      }
+
+      const res = await fetch("/api/subscription-status", {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        return;
+      }
+
+      if (data?.subscriptionTier) {
+        setSubscriptionTier(data.subscriptionTier);
+      }
+
+      if (data?.subscriptionStatus) {
+        setSubscriptionStatus(data.subscriptionStatus);
+      }
+
+      if (data?.subscriptionSource) {
+        setSubscriptionSource(data.subscriptionSource as SubscriptionSource);
+      }
+
+      setNextBillingDate(data?.currentPeriodEnd ?? "");
+    } finally {
+      setSubscriptionLoading(false);
     }
-
-    const res = await fetch("/api/stripe/subscription-status", {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      return;
-    }
-
-    if (data?.subscriptionTier) {
-      setSubscriptionTier(data.subscriptionTier);
-    }
-
-    if (data?.subscriptionStatus) {
-      setSubscriptionStatus(data.subscriptionStatus);
-    }
-
-    setNextBillingDate(data?.currentPeriodEnd ?? "");
-  } finally {
-    setSubscriptionLoading(false);
   }
-}
 
   async function sendVerificationSms() {
     setMsg("");
@@ -638,94 +646,102 @@ setLoading(false);
   }
 
   async function changeSubscription(tier: SubscriptionTier) {
-  if (!userId) return;
+    if (!userId) return;
 
-  if (tier === "free") {
-    toast.info("Az ingyenes csomagra váltást a lemondással kezeljük.");
-    return;
+    if (tier === "free") {
+      toast.info("Az ingyenes csomagra váltást a lemondással kezeljük.");
+      return;
+    }
+
+    if (subscriptionSource === "app_store" || subscriptionSource === "play_store") {
+      toast.info(
+        "Ezt az előfizetést mobilon vásároltad meg, ezért a módosítás az App Store / Google Play előfizetések között érhető el."
+      );
+      return;
+    }
+
+    setChangingPlan(tier);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/create-subscription-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ tier }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Hiányzik a Stripe checkout URL.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setChangingPlan(null);
+    }
   }
-
-  setChangingPlan(tier);
-
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const accessToken = session?.access_token;
-
-    if (!accessToken) {
-      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
-      return;
-    }
-
-    const res = await fetch("/api/stripe/create-subscription-checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ tier }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
-      return;
-    }
-
-    if (!data?.url) {
-      toast.error("Hiányzik a Stripe checkout URL.");
-      return;
-    }
-
-    window.location.href = data.url;
-  } finally {
-    setChangingPlan(null);
-  }
-}
 
   async function openCustomerPortal() {
-  setStripeCustomerPortalUrlLoading(true);
+    setStripeCustomerPortalUrlLoading(true);
 
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const accessToken = session?.access_token;
+      const accessToken = session?.access_token;
 
-    if (!accessToken) {
-      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
-      return;
+      if (!accessToken) {
+        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/customer-portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült megnyitni az előfizetéskezelőt.");
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Hiányzik a Customer Portal URL.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setStripeCustomerPortalUrlLoading(false);
     }
-
-    const res = await fetch("/api/stripe/customer-portal", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.error || "Nem sikerült megnyitni az előfizetéskezelőt.");
-      return;
-    }
-
-    if (!data?.url) {
-      toast.error("Hiányzik a Customer Portal URL.");
-      return;
-    }
-
-    window.location.href = data.url;
-  } finally {
-    setStripeCustomerPortalUrlLoading(false);
   }
-}
+
   useEffect(() => {
     loadAllProfileData();
 
@@ -751,6 +767,9 @@ setLoading(false);
       : subscriptionTier === "standard"
       ? "0 Ft havi 10 aukcióig, utána alapdíj"
       : "0 Ft havi 20 aukcióig, utána alapdíj";
+
+  const hasPaidSubscription =
+    subscriptionTier === "standard" || subscriptionTier === "pro";
 
   if (loading) {
     return (
@@ -920,20 +939,29 @@ setLoading(false);
                   {subscriptionStatus === "active" ? "Aktív" : subscriptionStatus}
                 </Badge>
               </div>
-              {subscriptionTier !== "free" && nextBillingDate && (
-  <div className="mt-3 text-sm text-slate-600">
-    Következő terhelés:{" "}
-    <span className="font-medium text-slate-900">
-      {formatDisplayDate(nextBillingDate)}
-    </span>
-  </div>
-)}
 
-{subscriptionTier !== "free" && (
-  <div className="mt-2 text-xs text-slate-500">
-    Az előfizetés számlája automatikusan emailben kerül kiküldésre.
-  </div>
-)}
+              {subscriptionTier !== "free" && nextBillingDate && (
+                <div className="mt-3 text-sm text-slate-600">
+                  Következő terhelés:{" "}
+                  <span className="font-medium text-slate-900">
+                    {formatDisplayDate(nextBillingDate)}
+                  </span>
+                </div>
+              )}
+
+              {subscriptionTier !== "free" && subscriptionSource === "stripe" && (
+                <div className="mt-2 text-xs text-slate-500">
+                  Az előfizetés számlája automatikusan emailben kerül kiküldésre.
+                </div>
+              )}
+
+              {subscriptionTier !== "free" &&
+                (subscriptionSource === "app_store" || subscriptionSource === "play_store") && (
+                  <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                    Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App Store /
+                    Google Play előfizetések között érhető el.
+                  </div>
+                )}
             </div>
 
             <div className="rounded-2xl border bg-slate-50 p-4">
@@ -954,28 +982,32 @@ setLoading(false);
                 </div>
 
                 <div className="flex items-center justify-between">
-  <span className="text-muted-foreground">Sikeres eladások ebben a hónapban</span>
-  <span className="font-semibold">{usedSuccessfulSales} db</span>
-</div>
+                  <span className="text-muted-foreground">Sikeres eladások ebben a hónapban</span>
+                  <span className="font-semibold">{usedSuccessfulSales} db</span>
+                </div>
 
-<div className="flex items-center justify-between">
-  <span className="text-muted-foreground">Havi díjmentes kvóta</span>
-  <span className="font-semibold">{monthlyFreeQuota} db</span>
-</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Havi díjmentes kvóta</span>
+                  <span className="font-semibold">{monthlyFreeQuota} db</span>
+                </div>
 
-<div className="flex items-center justify-between">
-  <span className="text-muted-foreground">Hátralévő díjmentes kvóta</span>
-  <span className="font-semibold">{remainingFreeQuota} db</span>
-</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Hátralévő díjmentes kvóta</span>
+                  <span className="font-semibold">{remainingFreeQuota} db</span>
+                </div>
 
-<div className="flex items-center justify-between">
-  <span className="text-muted-foreground">Ebben a hónapban felszámított díj</span>
-  <span className="font-semibold">{formatHufAmount(currentMonthFeeTotal)}</span>
-</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Ebben a hónapban felszámított díj</span>
+                  <span className="font-semibold">{formatHufAmount(currentMonthFeeTotal)}</span>
+                </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Jelenlegi egyenleg</span>
-                  <span className={`font-semibold ${balanceAmount < 0 ? "text-red-600" : "text-green-600"}`}>
+                  <span
+                    className={`font-semibold ${
+                      balanceAmount < 0 ? "text-red-600" : "text-green-600"
+                    }`}
+                  >
                     {formatHufAmount(balanceAmount)}
                   </span>
                 </div>
@@ -987,7 +1019,7 @@ setLoading(false);
               </div>
             </div>
 
-                        <div className="rounded-2xl border bg-white p-4">
+            <div className="rounded-2xl border bg-white p-4">
               <div className="mb-3 text-sm font-medium text-slate-900">Egyenleg rendezése</div>
 
               {balanceAmount < 0 ? (
@@ -1016,12 +1048,8 @@ setLoading(false);
               ) : (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm">
-                    <div className="font-medium text-green-700">
-                      Az egyenleged rendben van.
-                    </div>
-                    <div className="mt-1 text-green-600">
-                      Jelenleg nincs szükség rendezésre.
-                    </div>
+                    <div className="font-medium text-green-700">Az egyenleged rendben van.</div>
+                    <div className="mt-1 text-green-600">Jelenleg nincs szükség rendezésre.</div>
                   </div>
 
                   <Button variant="outline" className="w-full" disabled>
@@ -1078,9 +1106,7 @@ setLoading(false);
                 <div
                   key={plan.key}
                   className={`rounded-[1.5rem] border p-5 transition ${
-                    isCurrent
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-slate-200 bg-white"
+                    isCurrent ? "border-primary bg-primary/5 shadow-sm" : "border-slate-200 bg-white"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1107,37 +1133,52 @@ setLoading(false);
                   </div>
 
                   <div className="mt-5 space-y-2">
-  {isCurrent ? (
-    <>
-      <Button className="w-full" variant="secondary" disabled>
-        {subscriptionLoading ? "Betöltés..." : "Aktív csomag"}
-      </Button>
+                    {isCurrent ? (
+                      <>
+                        <Button className="w-full" variant="secondary" disabled>
+                          {subscriptionLoading ? "Betöltés..." : "Aktív csomag"}
+                        </Button>
 
-      {plan.key !== "free" && (
-        <Button
-          className="w-full"
-          variant="outline"
-          onClick={openCustomerPortal}
-          disabled={stripeCustomerPortalUrlLoading}
-        >
-          {stripeCustomerPortalUrlLoading ? "Betöltés..." : "Előfizetés kezelése / lemondás"}
-        </Button>
-      )}
-    </>
-  ) : (
-    <Button
-      className="w-full"
-      onClick={() => changeSubscription(plan.key)}
-      disabled={changingPlan !== null}
-    >
-      {changingPlan === plan.key
-        ? "Átirányítás..."
-        : plan.key === "free"
-        ? "Ingyenes csomag"
-        : "Csomag kiválasztása"}
-    </Button>
-  )}
-</div>
+                        {plan.key !== "free" && subscriptionSource === "stripe" && (
+                          <Button
+                            className="w-full"
+                            variant="outline"
+                            onClick={openCustomerPortal}
+                            disabled={stripeCustomerPortalUrlLoading}
+                          >
+                            {stripeCustomerPortalUrlLoading
+                              ? "Betöltés..."
+                              : "Előfizetés kezelése / lemondás"}
+                          </Button>
+                        )}
+
+                        {plan.key !== "free" &&
+                          (subscriptionSource === "app_store" ||
+                            subscriptionSource === "play_store") && (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                              Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App
+                              Store / Google Play előfizetések között érhető el.
+                            </div>
+                          )}
+                      </>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        onClick={() => changeSubscription(plan.key)}
+                        disabled={
+                          changingPlan !== null ||
+                          subscriptionSource === "app_store" ||
+                          subscriptionSource === "play_store"
+                        }
+                      >
+                        {changingPlan === plan.key
+                          ? "Átirányítás..."
+                          : plan.key === "free"
+                          ? "Ingyenes csomag"
+                          : "Csomag kiválasztása"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1203,11 +1244,25 @@ setLoading(false);
               <Sparkles className="h-4 w-4" />
               Fontos
             </div>
-            <p>
-  Az előfizetések Stripe-on keresztül kerülnek terhelésre. A következő terhelés dátuma
-  a profilban jelenik meg, a lemondás és a fizetési mód kezelése pedig a Stripe
-  ügyfélportálon érhető el. A számla automatikusan emailben kerül kiküldésre.
-</p>
+
+            {subscriptionSource === "stripe" ? (
+              <p>
+                Az előfizetések Stripe-on keresztül kerülnek terhelésre. A következő terhelés dátuma
+                a profilban jelenik meg, a lemondás és a fizetési mód kezelése pedig a Stripe
+                ügyfélportálon érhető el. A számla automatikusan emailben kerül kiküldésre.
+              </p>
+            ) : subscriptionSource === "app_store" || subscriptionSource === "play_store" ? (
+              <p>
+                Ezt az előfizetést mobilon vásároltad meg, ezért a módosítás és a lemondás az App
+                Store / Google Play előfizetések között érhető el. A webes Stripe ügyfélportál ehhez
+                a csomaghoz nem használható.
+              </p>
+            ) : (
+              <p>
+                Jelenleg nincs aktív fizetős előfizetésed. Az egyenleged csak 0 vagy negatív lehet,
+                pozitív összeget a rendszer nem tárol.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 type SubscriptionTier = "free" | "standard" | "pro";
+type SubscriptionSource = "free" | "stripe" | "app_store" | "play_store";
 
 const SUBSCRIPTION_PLANS: {
   key: SubscriptionTier;
@@ -69,6 +70,7 @@ function BillingPageContent() {
 
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
   const [subscriptionStatus, setSubscriptionStatus] = useState("active");
+  const [subscriptionSource, setSubscriptionSource] = useState<SubscriptionSource>("free");
   const [changingPlan, setChangingPlan] = useState<SubscriptionTier | null>(null);
 
   const [monthlyFreeQuota, setMonthlyFreeQuota] = useState(0);
@@ -84,9 +86,9 @@ function BillingPageContent() {
   const [topupStatusType, setTopupStatusType] = useState<"success" | "cancel" | "">("");
 
   const [subscriptionStatusMessage, setSubscriptionStatusMessage] = useState("");
-  const [subscriptionStatusType, setSubscriptionStatusType] = useState<
-    "success" | "cancel" | ""
-  >("");
+const [subscriptionStatusType, setSubscriptionStatusType] = useState<
+  "success" | "cancel" | ""
+>("");
 
   function formatHufAmount(value: number | null | undefined) {
     if (value === null || value === undefined) return "-";
@@ -120,7 +122,7 @@ function BillingPageContent() {
         return;
       }
 
-      const res = await fetch("/api/stripe/subscription-status", {
+      const res = await fetch("/api/subscription-status", {
         method: "GET",
         cache: "no-store",
         headers: {
@@ -140,6 +142,10 @@ function BillingPageContent() {
 
       if (data?.subscriptionStatus) {
         setSubscriptionStatus(data.subscriptionStatus);
+      }
+
+      if (data?.subscriptionSource) {
+        setSubscriptionSource(data.subscriptionSource as SubscriptionSource);
       }
 
       setNextBillingDate(data?.currentPeriodEnd ?? "");
@@ -296,60 +302,67 @@ function BillingPageContent() {
   }
 
   async function changeSubscription(tier: SubscriptionTier) {
-  if (tier === "free") {
-    toast.info(
-      "Az ingyenes csomagra váltást lemondással tudod intézni az előfizetéskezelőben."
-    );
-    return;
-  }
-
-  if (hasPaidSubscription) {
-    toast.info(
-      "Aktív fizetős előfizetés mellett a csomagváltás az előfizetéskezelőben érhető el."
-    );
-    return;
-  }
-
-  setChangingPlan(tier);
-
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const accessToken = session?.access_token;
-
-    if (!accessToken) {
-      toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+    if (tier === "free") {
+      toast.info(
+        "Az ingyenes csomagra váltást lemondással tudod intézni az előfizetéskezelőben."
+      );
       return;
     }
 
-    const res = await fetch("/api/stripe/create-subscription-checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ tier }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
+    if (subscriptionSource === "app_store" || subscriptionSource === "play_store") {
+      toast.info(
+        "Ezt az előfizetést mobilon vásároltad meg, ezért a módosítás az App Store / Google Play előfizetések között érhető el."
+      );
       return;
     }
 
-    if (!data?.url) {
-      toast.error("Hiányzik a Stripe checkout URL.");
+    if (hasPaidSubscription) {
+      toast.info(
+        "Aktív fizetős előfizetés mellett a csomagváltás az előfizetéskezelőben érhető el."
+      );
       return;
     }
 
-    window.location.href = data.url;
-  } finally {
-    setChangingPlan(null);
+    setChangingPlan(tier);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/create-subscription-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ tier }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Hiányzik a Stripe checkout URL.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setChangingPlan(null);
+    }
   }
-}
 
   async function openCustomerPortal() {
     setStripeCustomerPortalUrlLoading(true);
@@ -393,13 +406,11 @@ function BillingPageContent() {
   }
 
   const currentPlan = useMemo(() => {
-    return (
-      SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0]
-    );
+    return SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0];
   }, [subscriptionTier]);
 
   const hasPaidSubscription =
-  subscriptionTier === "standard" || subscriptionTier === "pro";
+    subscriptionTier === "standard" || subscriptionTier === "pro";
 
   const currentMonthlyFee =
     subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 2990 : 0;
@@ -408,8 +419,8 @@ function BillingPageContent() {
     subscriptionTier === "free"
       ? "2,5% / eladott tétel, maximum 2000 Ft aukciónként"
       : subscriptionTier === "standard"
-        ? "0 Ft havi 10 aukcióig, utána alapdíj"
-        : "0 Ft havi 20 aukcióig, utána alapdíj";
+      ? "0 Ft havi 10 aukcióig, utána alapdíj"
+      : "0 Ft havi 20 aukcióig, utána alapdíj";
 
   if (loading) {
     return <div className="mx-auto max-w-5xl p-6">Betöltés...</div>;
@@ -558,8 +569,8 @@ function BillingPageContent() {
                 {subscriptionLoading
                   ? "Betöltés..."
                   : subscriptionStatus === "active"
-                    ? "Aktív"
-                    : subscriptionStatus}
+                  ? "Aktív"
+                  : subscriptionStatus}
               </Badge>
             </div>
 
@@ -572,36 +583,43 @@ function BillingPageContent() {
               </div>
             ) : null}
 
-            {hasPaidSubscription ? (
-  <>
-    <div className="mt-2 text-xs text-slate-500">
-      Lemondás az aktuális számlázási időszak végére indítható az előfizetéskezelőben.
-    </div>
+            {hasPaidSubscription && subscriptionSource === "stripe" ? (
+              <>
+                <div className="mt-2 text-xs text-slate-500">
+                  Lemondás az aktuális számlázási időszak végére indítható az előfizetéskezelőben.
+                </div>
 
-    <div className="mt-2 text-xs text-slate-500">
-      Az előfizetés számlája automatikusan emailben kerül kiküldésre.
-    </div>
+                <div className="mt-2 text-xs text-slate-500">
+                  Az előfizetés számlája automatikusan emailben kerül kiküldésre.
+                </div>
 
-    <Button
-      className="mt-4 w-full"
-      variant="outline"
-      onClick={openCustomerPortal}
-      disabled={stripeCustomerPortalUrlLoading}
-    >
-      {stripeCustomerPortalUrlLoading
-        ? "Betöltés..."
-        : "Előfizetés kezelése / lemondás"}
-    </Button>
-  </>
-) : null}
+                <Button
+                  className="mt-4 w-full"
+                  variant="outline"
+                  onClick={openCustomerPortal}
+                  disabled={stripeCustomerPortalUrlLoading}
+                >
+                  {stripeCustomerPortalUrlLoading
+                    ? "Betöltés..."
+                    : "Előfizetés kezelése / lemondás"}
+                </Button>
+              </>
+            ) : null}
+
+            {hasPaidSubscription &&
+            (subscriptionSource === "app_store" || subscriptionSource === "play_store") ? (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App Store / Google
+                Play előfizetések között érhető el.
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-4">
             {SUBSCRIPTION_PLANS.map((plan) => {
-  const isCurrent = plan.key === subscriptionTier;
-  const canSelectWithCheckout =
-    !hasPaidSubscription &&
-    (plan.key === "standard" || plan.key === "pro");
+              const isCurrent = plan.key === subscriptionTier;
+              const canSelectWithCheckout =
+                !hasPaidSubscription && (plan.key === "standard" || plan.key === "pro");
 
               return (
                 <div
@@ -638,34 +656,50 @@ function BillingPageContent() {
                   </div>
 
                   <div className="mt-auto pt-5">
-  {isCurrent ? (
-    <Button className="w-full" variant="secondary" disabled>
-      Aktív csomag
-    </Button>
-  ) : canSelectWithCheckout ? (
-    <Button
-      className="w-full"
-      onClick={() => changeSubscription(plan.key)}
-      disabled={changingPlan !== null}
-    >
-      {changingPlan === plan.key ? "Átirányítás..." : "Csomag kiválasztása"}
-    </Button>
-  ) : hasPaidSubscription ? (
-    <div className="space-y-2">
-      <Button className="w-full" variant="outline" disabled>
-        Előfizetéskezelőben módosítható
-      </Button>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-        Aktív fizetős előfizetés mellett a csomagváltás és a lemondás az
-        „Előfizetés kezelése / lemondás” gombon keresztül érhető el.
-      </div>
-    </div>
-  ) : (
-    <Button className="w-full" variant="outline" disabled>
-      Nem elérhető
-    </Button>
-  )}
-</div>
+                    {isCurrent ? (
+                      <Button className="w-full" variant="secondary" disabled>
+                        Aktív csomag
+                      </Button>
+                    ) : canSelectWithCheckout ? (
+                      <Button
+                        className="w-full"
+                        onClick={() => changeSubscription(plan.key)}
+                        disabled={
+                          changingPlan !== null ||
+                          subscriptionSource === "app_store" ||
+                          subscriptionSource === "play_store"
+                        }
+                      >
+                        {changingPlan === plan.key ? "Átirányítás..." : "Csomag kiválasztása"}
+                      </Button>
+                    ) : hasPaidSubscription && subscriptionSource === "stripe" ? (
+                      <div className="space-y-2">
+                        <Button className="w-full" variant="outline" disabled>
+                          Előfizetéskezelőben módosítható
+                        </Button>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                          Aktív fizetős előfizetés mellett a csomagváltás és a lemondás az
+                          „Előfizetés kezelése / lemondás” gombon keresztül érhető el.
+                        </div>
+                      </div>
+                    ) : hasPaidSubscription &&
+                      (subscriptionSource === "app_store" ||
+                        subscriptionSource === "play_store") ? (
+                      <div className="space-y-2">
+                        <Button className="w-full" variant="outline" disabled>
+                          Mobilon kezelhető
+                        </Button>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                          Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App Store
+                          / Google Play előfizetések között érhető el.
+                        </div>
+                      </div>
+                    ) : (
+                      <Button className="w-full" variant="outline" disabled>
+                        Nem elérhető
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -738,17 +772,33 @@ function BillingPageContent() {
           <Sparkles className="h-4 w-4" />
           Fontos
         </div>
-        <p>
-          Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Az
-          előfizetés Stripe-on keresztül kezelhető, a következő terhelés dátuma itt jelenik meg, a
-          lemondás és a fizetési mód kezelése pedig a Stripe ügyfélportálon érhető el. Az
-          egyenlegrendezés szintén Stripe-on keresztül történik. A számla automatikusan emailben
-          kerül kiküldésre.
-        </p>
+
+        {subscriptionSource === "stripe" ? (
+          <p>
+            Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Az
+            előfizetés Stripe-on keresztül kezelhető, a következő terhelés dátuma itt jelenik meg,
+            a lemondás és a fizetési mód kezelése pedig a Stripe ügyfélportálon érhető el. Az
+            egyenlegrendezés szintén Stripe-on keresztül történik. A számla automatikusan emailben
+            kerül kiküldésre.
+          </p>
+        ) : subscriptionSource === "app_store" || subscriptionSource === "play_store" ? (
+          <p>
+            Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Ezt az
+            előfizetést mobilon vásároltad meg, ezért a módosítás és a lemondás az App Store /
+            Google Play előfizetések között érhető el. A webes Stripe ügyfélportál ehhez a csomaghoz
+            nem használható.
+          </p>
+        ) : (
+          <p>
+            Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Jelenleg
+            nincs aktív fizetős előfizetésed. Az egyenlegrendezés Stripe-on keresztül történik.
+          </p>
+        )}
       </div>
     </div>
   );
 }
+
 export default function BillingPage() {
   return (
     <Suspense fallback={<div className="mx-auto max-w-5xl p-6">Betöltés...</div>}>

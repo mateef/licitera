@@ -217,6 +217,9 @@ async function syncSubscriptionProfileFromCheckout(session: Stripe.Checkout.Sess
   const priceId = subscription.items.data[0]?.price?.id ?? null;
   const tier = getTierFromPriceId(priceId);
 
+  const currentPeriodEndUnix =
+    subscription.items.data[0]?.current_period_end ?? null;
+
   const { error } = await supabaseAdmin
     .from("profiles")
     .update({
@@ -224,10 +227,13 @@ async function syncSubscriptionProfileFromCheckout(session: Stripe.Checkout.Sess
       stripe_subscription_id: subscription.id,
       subscription_tier: tier,
       subscription_status: subscription.status,
-      subscription_current_period_end:
-        subscription.items.data[0]?.current_period_end
-          ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
-          : null,
+      subscription_current_period_end: currentPeriodEndUnix
+        ? new Date(currentPeriodEndUnix * 1000).toISOString()
+        : null,
+      subscription_source: tier === "free" ? "free" : "stripe",
+      subscription_store: null,
+      subscription_store_product_id: null,
+      revenuecat_app_user_id: userId,
     })
     .eq("id", userId);
 
@@ -241,6 +247,7 @@ async function syncSubscriptionProfileFromCheckout(session: Stripe.Checkout.Sess
     subscriptionId: subscription.id,
     tier,
     status: subscription.status,
+    subscriptionSource: tier === "free" ? "free" : "stripe",
   });
 }
 
@@ -486,34 +493,54 @@ async function syncSubscriptionProfile(subscription: Stripe.Subscription) {
 
   const priceId = subscription.items.data[0]?.price?.id ?? null;
 
-  const tier =
+  const nextTier =
     subscription.status === "canceled" || subscription.status === "incomplete_expired"
       ? "free"
       : getTierFromPriceId(priceId);
+
+  const { data: currentProfile, error: currentProfileError } = await supabaseAdmin
+    .from("profiles")
+    .select("id, subscription_source")
+    .eq("stripe_customer_id", customerId)
+    .maybeSingle();
+
+  if (currentProfileError) {
+    throw new Error(currentProfileError.message);
+  }
+
+  if (!currentProfile) {
+    return;
+  }
+
+  const currentSource = (currentProfile as any)?.subscription_source ?? "free";
+
+  // Ha a user már app store / play store forrásból aktív, a Stripe webhook ne írja felül
+  if (currentSource === "app_store" || currentSource === "play_store") {
+    console.log("STRIPE SYNC SKIPPED BECAUSE MOBILE STORE IS SOURCE OF TRUTH", {
+      customerId,
+      currentSource,
+      subscriptionId: subscription.id,
+    });
+    return;
+  }
 
   const { error: profileUpdateError } = await supabaseAdmin
     .from("profiles")
     .update({
       stripe_subscription_id: subscription.status === "canceled" ? null : subscription.id,
-      subscription_tier: tier,
+      subscription_tier: nextTier,
       subscription_status: subscription.status,
       subscription_current_period_end:
         subscription.items.data[0]?.current_period_end
           ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
           : null,
+      subscription_source: nextTier === "free" ? "free" : "stripe",
     })
-    .eq("stripe_customer_id", customerId);
+    .eq("id", (currentProfile as any).id);
 
   if (profileUpdateError) {
     throw new Error(profileUpdateError.message);
   }
-
-  console.log("SUBSCRIPTION STATUS SYNCED", {
-    customerId,
-    subscriptionId: subscription.id,
-    status: subscription.status,
-    tier,
-  });
 }
 
 export async function POST(req: Request) {

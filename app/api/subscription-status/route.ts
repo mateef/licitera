@@ -37,18 +37,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Érvénytelen felhasználó." }, { status: 401 });
     }
 
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("subscription_tier,subscription_status,subscription_current_period_end")
+      .select(
+        "subscription_tier,subscription_status,subscription_current_period_end,subscription_source"
+      )
       .eq("id", user.id)
       .maybeSingle();
 
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
     return NextResponse.json({
-  subscriptionTier: (profile as any)?.subscription_tier ?? "free",
-  subscriptionStatus: (profile as any)?.subscription_status ?? "active",
-  currentPeriodEnd: (profile as any)?.subscription_current_period_end ?? null,
-  subscriptionSource: (profile as any)?.subscription_source ?? "free",
-});
+      subscriptionTier: (profile as any)?.subscription_tier ?? "free",
+      subscriptionStatus: (profile as any)?.subscription_status ?? "active",
+      currentPeriodEnd: (profile as any)?.subscription_current_period_end ?? null,
+      subscriptionSource: (profile as any)?.subscription_source ?? "free",
+    });
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || "Nem sikerült lekérni az előfizetés állapotát." },
