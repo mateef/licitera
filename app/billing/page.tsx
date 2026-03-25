@@ -86,9 +86,9 @@ function BillingPageContent() {
   const [topupStatusType, setTopupStatusType] = useState<"success" | "cancel" | "">("");
 
   const [subscriptionStatusMessage, setSubscriptionStatusMessage] = useState("");
-const [subscriptionStatusType, setSubscriptionStatusType] = useState<
-  "success" | "cancel" | ""
->("");
+  const [subscriptionStatusType, setSubscriptionStatusType] = useState<
+    "" | "success" | "cancel"
+  >("");
 
   function formatHufAmount(value: number | null | undefined) {
     if (value === null || value === undefined) return "-";
@@ -106,7 +106,7 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
     });
   }
 
-  async function loadStripeSubscriptionStatus(uid: string) {
+  async function loadSubscriptionStatus(uid: string) {
     if (!uid) return;
 
     setSubscriptionLoading(true);
@@ -117,10 +117,7 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
       } = await supabase.auth.getSession();
 
       const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        return;
-      }
+      if (!accessToken) return;
 
       const res = await fetch("/api/subscription-status", {
         method: "GET",
@@ -131,13 +128,10 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
       });
 
       const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        return;
-      }
+      if (!res.ok) return;
 
       if (data?.subscriptionTier) {
-        setSubscriptionTier(data.subscriptionTier);
+        setSubscriptionTier(data.subscriptionTier as SubscriptionTier);
       }
 
       if (data?.subscriptionStatus) {
@@ -146,6 +140,10 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
 
       if (data?.subscriptionSource) {
         setSubscriptionSource(data.subscriptionSource as SubscriptionSource);
+      } else if (data?.subscriptionTier && data.subscriptionTier !== "free") {
+        setSubscriptionSource("stripe");
+      } else {
+        setSubscriptionSource("free");
       }
 
       setNextBillingDate(data?.currentPeriodEnd ?? "");
@@ -157,60 +155,72 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
   async function loadData() {
     setLoading(true);
 
-    const { data: s } = await supabase.auth.getSession();
-    const uid = s.session?.user?.id;
+    try {
+      const { data: s } = await supabase.auth.getSession();
+      const uid = s.session?.user?.id;
 
-    if (!uid) {
+      if (!uid) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: balanceData } = await supabase
+        .from("billing_user_balances")
+        .select("balance_amount")
+        .eq("user_id", uid)
+        .maybeSingle();
+
+      const rawBalance = Number((balanceData as any)?.balance_amount ?? 0);
+      setBalance(Math.min(0, rawBalance));
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("subscription_tier,subscription_status,subscription_source")
+        .eq("id", uid)
+        .maybeSingle();
+
+      const profileTier = ((profileData as any)?.subscription_tier ?? "free") as SubscriptionTier;
+      const profileStatus = (profileData as any)?.subscription_status ?? "active";
+      const profileSource = (profileData as any)?.subscription_source ?? null;
+
+      setSubscriptionTier(profileTier);
+      setSubscriptionStatus(profileStatus);
+      setSubscriptionSource(
+        (profileSource ?? (profileTier === "free" ? "free" : "stripe")) as SubscriptionSource
+      );
+
+      const { data: quotaRow } = await supabase
+        .from("billing_monthly_quota_usage")
+        .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
+        .eq("user_id", uid)
+        .maybeSingle();
+
+      setMonthlyFreeQuota((quotaRow as any)?.monthly_free_quota ?? 0);
+      setRemainingFreeQuota((quotaRow as any)?.remaining_free_quota ?? 0);
+      setUsedSuccessfulSales((quotaRow as any)?.used_successful_sales ?? 0);
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const { data: monthFees } = await supabase
+        .from("billing_fee_events")
+        .select("fee_amount")
+        .eq("seller_user_id", uid)
+        .gte("created_at", monthStart.toISOString());
+
+      const totalMonthFee =
+        (monthFees ?? []).reduce(
+          (sum: number, row: any) => sum + Number(row?.fee_amount ?? 0),
+          0
+        ) || 0;
+
+      setCurrentMonthFeeTotal(totalMonthFee);
+
+      await loadSubscriptionStatus(uid);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: balanceData } = await supabase
-      .from("billing_user_balances")
-      .select("balance_amount")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    const rawBalance = Number((balanceData as any)?.balance_amount ?? 0);
-    setBalance(Math.min(0, rawBalance));
-
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("subscription_tier,subscription_status")
-      .eq("id", uid)
-      .maybeSingle();
-
-    setSubscriptionTier(((profileData as any)?.subscription_tier ?? "free") as SubscriptionTier);
-    setSubscriptionStatus((profileData as any)?.subscription_status ?? "active");
-
-    const { data: quotaRow } = await supabase
-      .from("billing_monthly_quota_usage")
-      .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    setMonthlyFreeQuota((quotaRow as any)?.monthly_free_quota ?? 0);
-    setRemainingFreeQuota((quotaRow as any)?.remaining_free_quota ?? 0);
-    setUsedSuccessfulSales((quotaRow as any)?.used_successful_sales ?? 0);
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-
-    const { data: monthFees } = await supabase
-      .from("billing_fee_events")
-      .select("fee_amount")
-      .eq("seller_user_id", uid)
-      .gte("created_at", monthStart.toISOString());
-
-    const totalMonthFee =
-      (monthFees ?? []).reduce((sum: number, row: any) => sum + (row.fee_amount ?? 0), 0) ?? 0;
-
-    setCurrentMonthFeeTotal(totalMonthFee);
-
-    await loadStripeSubscriptionStatus(uid);
-
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -257,6 +267,12 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
       router.replace(query ? `/billing?${query}` : "/billing");
     }
   }, [router, searchParams]);
+
+  const hasPaidSubscription =
+    subscriptionTier === "standard" || subscriptionTier === "pro";
+
+  const effectiveSubscriptionSource: SubscriptionSource =
+    subscriptionSource === "free" && hasPaidSubscription ? "stripe" : subscriptionSource;
 
   async function handleTopup() {
     if (topupLoading) return;
@@ -309,7 +325,10 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
       return;
     }
 
-    if (subscriptionSource === "app_store" || subscriptionSource === "play_store") {
+    if (
+      effectiveSubscriptionSource === "app_store" ||
+      effectiveSubscriptionSource === "play_store"
+    ) {
       toast.info(
         "Ezt az előfizetést mobilon vásároltad meg, ezért a módosítás az App Store / Google Play előfizetések között érhető el."
       );
@@ -408,9 +427,6 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
   const currentPlan = useMemo(() => {
     return SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0];
   }, [subscriptionTier]);
-
-  const hasPaidSubscription =
-    subscriptionTier === "standard" || subscriptionTier === "pro";
 
   const currentMonthlyFee =
     subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 2990 : 0;
@@ -583,7 +599,7 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
               </div>
             ) : null}
 
-            {hasPaidSubscription && subscriptionSource === "stripe" ? (
+            {hasPaidSubscription && effectiveSubscriptionSource === "stripe" ? (
               <>
                 <div className="mt-2 text-xs text-slate-500">
                   Lemondás az aktuális számlázási időszak végére indítható az előfizetéskezelőben.
@@ -607,7 +623,8 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
             ) : null}
 
             {hasPaidSubscription &&
-            (subscriptionSource === "app_store" || subscriptionSource === "play_store") ? (
+            (effectiveSubscriptionSource === "app_store" ||
+              effectiveSubscriptionSource === "play_store") ? (
               <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                 Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App Store / Google
                 Play előfizetések között érhető el.
@@ -666,13 +683,13 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
                         onClick={() => changeSubscription(plan.key)}
                         disabled={
                           changingPlan !== null ||
-                          subscriptionSource === "app_store" ||
-                          subscriptionSource === "play_store"
+                          effectiveSubscriptionSource === "app_store" ||
+                          effectiveSubscriptionSource === "play_store"
                         }
                       >
                         {changingPlan === plan.key ? "Átirányítás..." : "Csomag kiválasztása"}
                       </Button>
-                    ) : hasPaidSubscription && subscriptionSource === "stripe" ? (
+                    ) : hasPaidSubscription && effectiveSubscriptionSource === "stripe" ? (
                       <div className="space-y-2">
                         <Button className="w-full" variant="outline" disabled>
                           Előfizetéskezelőben módosítható
@@ -683,8 +700,8 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
                         </div>
                       </div>
                     ) : hasPaidSubscription &&
-                      (subscriptionSource === "app_store" ||
-                        subscriptionSource === "play_store") ? (
+                      (effectiveSubscriptionSource === "app_store" ||
+                        effectiveSubscriptionSource === "play_store") ? (
                       <div className="space-y-2">
                         <Button className="w-full" variant="outline" disabled>
                           Mobilon kezelhető
@@ -773,7 +790,7 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
           Fontos
         </div>
 
-        {subscriptionSource === "stripe" ? (
+        {effectiveSubscriptionSource === "stripe" ? (
           <p>
             Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Az
             előfizetés Stripe-on keresztül kezelhető, a következő terhelés dátuma itt jelenik meg,
@@ -781,7 +798,8 @@ const [subscriptionStatusType, setSubscriptionStatusType] = useState<
             egyenlegrendezés szintén Stripe-on keresztül történik. A számla automatikusan emailben
             kerül kiküldésre.
           </p>
-        ) : subscriptionSource === "app_store" || subscriptionSource === "play_store" ? (
+        ) : effectiveSubscriptionSource === "app_store" ||
+          effectiveSubscriptionSource === "play_store" ? (
           <p>
             Az egyenleged csak 0 vagy negatív lehet, pozitív összeget a rendszer nem tárol. Ezt az
             előfizetést mobilon vásároltad meg, ezért a módosítás és a lemondás az App Store /
