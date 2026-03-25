@@ -123,6 +123,7 @@ export default function ListingDetailPage() {
   const [listing, setListing] = useState<Listing | null>(null);
   const [bids, setBids] = useState<BidRow[]>([]);
   const [bidAmount, setBidAmount] = useState("");
+  const [maxBidAmount, setMaxBidAmount] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [watched, setWatched] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
@@ -132,6 +133,8 @@ export default function ListingDetailPage() {
 
   const [bidError, setBidError] = useState<string>("");
   const [bidTouched, setBidTouched] = useState(false);
+  const [maxBidError, setMaxBidError] = useState<string>("");
+  const [maxBidTouched, setMaxBidTouched] = useState(false);
 
   const [tick, setTick] = useState(0);
   const [autoMinNext, setAutoMinNext] = useState<boolean>(true);
@@ -140,13 +143,13 @@ export default function ListingDetailPage() {
   const [reportDetails, setReportDetails] = useState("");
   const [winnerDisplayName, setWinnerDisplayName] = useState("");
 
-  const [maxBidAmount, setMaxBidAmount] = useState("");
   const [maxBidLoading, setMaxBidLoading] = useState(false);
 
   const [sellerDisplayName, setSellerDisplayName] = useState("");
   const [sellerRatingText, setSellerRatingText] = useState("Még nincs");
   const [sellerReviewCount, setSellerReviewCount] = useState<number>(0);
   const [currentLeaderDisplayName, setCurrentLeaderDisplayName] = useState("");
+  const [currentLeaderUserId, setCurrentLeaderUserId] = useState<string | null>(null);
   const [sellerSubscriptionTier, setSellerSubscriptionTier] = useState<"free" | "standard" | "pro">("free");
   const [sellerPhoneVerified, setSellerPhoneVerified] = useState(false);
   const [bidUserNames, setBidUserNames] = useState<Record<string, string>>({});
@@ -266,30 +269,30 @@ export default function ListingDetailPage() {
 
   async function loadSellerMeta(sellerUserId: string | null) {
     if (!sellerUserId) {
-  setSellerDisplayName("Ismeretlen hirdető");
-  setSellerRatingText("Még nincs");
-  setSellerReviewCount(0);
-  setSellerSubscriptionTier("free");
-  setSellerPhoneVerified(false);
-  return;
-}
+      setSellerDisplayName("Ismeretlen hirdető");
+      setSellerRatingText("Még nincs");
+      setSellerReviewCount(0);
+      setSellerSubscriptionTier("free");
+      setSellerPhoneVerified(false);
+      return;
+    }
 
     const { data: profileData } = await supabase
-  .from("profiles")
-  .select("id,full_name,public_display_name,subscription_tier,phone_verified")
-  .eq("id", sellerUserId)
-  .maybeSingle();
+      .from("profiles")
+      .select("id,full_name,public_display_name,subscription_tier,phone_verified")
+      .eq("id", sellerUserId)
+      .maybeSingle();
 
     if (profileData) {
-  const row = profileData as PublicProfileRow;
-  setSellerDisplayName(row.public_display_name || toPublicName(row.full_name));
-  setSellerSubscriptionTier((row.subscription_tier as "free" | "standard" | "pro" | null) ?? "free");
-  setSellerPhoneVerified(!!row.phone_verified);
-} else {
-  setSellerDisplayName("Ismeretlen hirdető");
-  setSellerSubscriptionTier("free");
-  setSellerPhoneVerified(false);
-}
+      const row = profileData as PublicProfileRow;
+      setSellerDisplayName(row.public_display_name || toPublicName(row.full_name));
+      setSellerSubscriptionTier((row.subscription_tier as "free" | "standard" | "pro" | null) ?? "free");
+      setSellerPhoneVerified(!!row.phone_verified);
+    } else {
+      setSellerDisplayName("Ismeretlen hirdető");
+      setSellerSubscriptionTier("free");
+      setSellerPhoneVerified(false);
+    }
 
     const { data: ratingData } = await supabase
       .from("user_rating_summary")
@@ -368,10 +371,13 @@ export default function ListingDetailPage() {
 
     if (error || !data || data.length === 0 || !data[0]?.user_id) {
       setCurrentLeaderDisplayName("");
+      setCurrentLeaderUserId(null);
       return;
     }
 
     const leaderUserId = data[0].user_id as string;
+    setCurrentLeaderUserId(leaderUserId);
+
     const names = await loadPublicNamesForUserIds([leaderUserId]);
     setCurrentLeaderDisplayName(names[leaderUserId] || "Ismeretlen felhasználó");
   }
@@ -414,6 +420,8 @@ export default function ListingDetailPage() {
   }, [listing]);
 
   const isOwner = !!sessionUserId && !!listing?.user_id && sessionUserId === listing.user_id;
+  const isLeading =
+    !!sessionUserId && !!currentLeaderUserId && sessionUserId === currentLeaderUserId && !status.ended;
 
   const bidValidation = useMemo(() => {
     if (status.ended) return { ok: false, error: "Az aukció lezárult." };
@@ -432,9 +440,31 @@ export default function ListingDetailPage() {
     return { ok: true, error: "" };
   }, [bidAmount, isOwner, minNextBid, sessionUserId, status.ended]);
 
+  const maxBidValidation = useMemo(() => {
+    if (status.ended) return { ok: false, error: "Az aukció lezárult." };
+    if (!sessionUserId) return { ok: false, error: "Licitáláshoz be kell jelentkezni." };
+    if (isOwner) return { ok: false, error: "Saját aukcióra nem licitálhatsz." };
+    if (!minNextBid) return { ok: false, error: "Nem számolható minimum licit." };
+
+    const trimmed = maxBidAmount.trim();
+    if (!trimmed) return { ok: false, error: "" };
+
+    const { n } = parseBidAmount(trimmed);
+    if (!Number.isFinite(n)) return { ok: false, error: "Adj meg érvényes maximum licitet." };
+    if (n < minNextBid) {
+      return { ok: false, error: `A minimum maximum licit: ${formatHuf(minNextBid)}` };
+    }
+
+    return { ok: true, error: "" };
+  }, [isOwner, maxBidAmount, minNextBid, sessionUserId, status.ended]);
+
   useEffect(() => {
     setBidError(bidValidation.error);
   }, [bidValidation.error]);
+
+  useEffect(() => {
+    setMaxBidError(maxBidValidation.error);
+  }, [maxBidValidation.error]);
 
   async function buyNow() {
     if (!sessionUserId) {
@@ -484,7 +514,7 @@ export default function ListingDetailPage() {
     }
   }
 
-  async function placeBid() {
+  async function placeDirectBid() {
     setBidTouched(true);
 
     if (!bidValidation.ok) {
@@ -527,27 +557,20 @@ export default function ListingDetailPage() {
     await loadCurrentLeader();
   }
 
-  async function placeMaxBid() {
+  async function placeMaximumBid() {
+    setMaxBidTouched(true);
+
+    if (!maxBidValidation.ok) {
+      if (maxBidValidation.error) toast.error(maxBidValidation.error);
+      else toast.error("Adj meg maximum licitet.");
+      return;
+    }
+
+    const { n } = parseBidAmount(maxBidAmount);
+    const amount = n;
+
     if (!sessionUserId) {
       toast.error("Licitáláshoz be kell jelentkezni.");
-      return;
-    }
-
-    if (isOwner) {
-      toast.error("Saját aukcióra nem licitálhatsz.");
-      return;
-    }
-
-    if (status.ended) {
-      toast.error("Az aukció lezárult.");
-      return;
-    }
-
-    const raw = maxBidAmount.trim().replace(/\s+/g, "").replace(/,/g, ".");
-    const amount = Number(raw);
-
-    if (!Number.isFinite(amount)) {
-      toast.error("Adj meg érvényes maximum licitet.");
       return;
     }
 
@@ -566,6 +589,7 @@ export default function ListingDetailPage() {
 
       toast.success("Maximum licit sikeresen beállítva ✅");
       setMaxBidAmount("");
+      setMaxBidTouched(false);
       await loadListing();
       await loadBids();
       await loadCurrentLeader();
@@ -748,18 +772,30 @@ export default function ListingDetailPage() {
 
     const channel = supabase
       .channel(`realtime-listing-${listingId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "bids" }, async () => {
-        await loadListing();
-        await loadBids();
-        await loadCurrentLeader();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "listings" }, async () => {
-        await loadListing();
-        await loadCurrentLeader();
-      })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "listing_comments" }, async () => {
-        await loadComments();
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bids", filter: `listing_id=eq.${listingId}` },
+        async () => {
+          await loadListing();
+          await loadBids();
+          await loadCurrentLeader();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "listings", filter: `id=eq.${listingId}` },
+        async () => {
+          await loadListing();
+          await loadCurrentLeader();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "listing_comments", filter: `listing_id=eq.${listingId}` },
+        async () => {
+          await loadComments();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -867,15 +903,15 @@ export default function ListingDetailPage() {
                 </Badge>
               )}
               <Badge
-  className={
-    sellerSubscriptionTier === "pro"
-      ? "rounded-full bg-amber-500 px-3 py-1 text-white hover:bg-amber-500"
-      : "rounded-full px-3 py-1"
-  }
-  variant={sellerSubscriptionTier === "pro" ? undefined : "outline"}
->
-  {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
-</Badge>
+                className={
+                  sellerSubscriptionTier === "pro"
+                    ? "rounded-full bg-amber-500 px-3 py-1 text-white hover:bg-amber-500"
+                    : "rounded-full px-3 py-1"
+                }
+                variant={sellerSubscriptionTier === "pro" ? undefined : "outline"}
+              >
+                {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
+              </Badge>
 
               {buyNowSuccess && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
@@ -1347,32 +1383,32 @@ export default function ListingDetailPage() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-  <div className="text-xs uppercase tracking-wide text-slate-500">Hirdető</div>
-  <a
-    href={listing.user_id ? `/profile/${listing.user_id}` : "#"}
-    className="mt-1 inline-flex items-center gap-2 font-semibold text-slate-900 hover:underline"
-  >
-    <UserRound className="h-4 w-4" />
-    {sellerDisplayName || "Betöltés..."}
-  </a>
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Hirdető</div>
+                        <a
+                          href={listing.user_id ? `/profile/${listing.user_id}` : "#"}
+                          className="mt-1 inline-flex items-center gap-2 font-semibold text-slate-900 hover:underline"
+                        >
+                          <UserRound className="h-4 w-4" />
+                          {sellerDisplayName || "Betöltés..."}
+                        </a>
 
-  <div className="mt-2 flex flex-wrap gap-2">
-    <Badge
-      variant={sellerSubscriptionTier === "pro" ? "default" : "secondary"}
-      className={sellerSubscriptionTier === "pro" ? "bg-amber-500 hover:bg-amber-500 text-white" : ""}
-    >
-      {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
-    </Badge>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Badge
+                            variant={sellerSubscriptionTier === "pro" ? "default" : "secondary"}
+                            className={sellerSubscriptionTier === "pro" ? "bg-amber-500 hover:bg-amber-500 text-white" : ""}
+                          >
+                            {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
+                          </Badge>
 
-    {sellerPhoneVerified ? (
-      <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
-        Telefonszám hitelesítve
-      </Badge>
-    ) : (
-      <Badge variant="outline">Telefonszám nincs hitelesítve</Badge>
-    )}
-  </div>
-</div>
+                          {sellerPhoneVerified ? (
+                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                              Telefonszám hitelesítve
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Telefonszám nincs hitelesítve</Badge>
+                          )}
+                        </div>
+                      </div>
 
                       <div className="text-right">
                         <div className="text-xs uppercase tracking-wide text-slate-500">Értékelés</div>
@@ -1399,8 +1435,10 @@ export default function ListingDetailPage() {
                     <div className="mt-1 font-semibold text-indigo-900">
                       {status.ended
                         ? winnerDisplayName || "Nincs nyertes"
-                        : topBidForDisplay?.user_id
-                        ? currentLeaderDisplayName || "Betöltés..."
+                        : currentLeaderUserId
+                        ? isLeading
+                          ? "Te vezetsz"
+                          : currentLeaderDisplayName || "Betöltés..."
                         : "Még nincs licit"}
                     </div>
                   </div>
@@ -1489,7 +1527,14 @@ export default function ListingDetailPage() {
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">Licitálás</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          A beírt összegre azonnal licitálsz.
+                        </div>
+                      </div>
+
                       <Input
                         placeholder={minNextBid ? `Minimum: ${formatHuf(minNextBid)}` : "Adj meg összeget"}
                         value={bidAmount}
@@ -1500,7 +1545,7 @@ export default function ListingDetailPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            placeBid();
+                            placeDirectBid();
                           }
                         }}
                         onBlur={() => setBidTouched(true)}
@@ -1520,41 +1565,41 @@ export default function ListingDetailPage() {
                         </span>
                         {autoMinNext ? <span> · Auto kitöltés bekapcsolva</span> : null}
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => setBidAmount(String(minNextBid ?? ""))}
-                        disabled={!minNextBid}
-                      >
-                        Minimum
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 5))}
-                        disabled={!minNextBid}
-                      >
-                        +5 lépcső
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 10))}
-                        disabled={!minNextBid}
-                      >
-                        +10 lépcső
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => setBidAmount(String(minNextBid ?? ""))}
+                          disabled={!minNextBid}
+                        >
+                          Minimum
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 5))}
+                          disabled={!minNextBid}
+                        >
+                          +5 lépcső
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 10))}
+                          disabled={!minNextBid}
+                        >
+                          +10 lépcső
+                        </Button>
+                      </div>
+
+                      <Button className="h-12 w-full rounded-xl" onClick={placeDirectBid} disabled={!bidValidation.ok}>
+                        Licitálok
                       </Button>
                     </div>
-
-                    <Button className="h-12 w-full rounded-xl" onClick={placeBid} disabled={!bidValidation.ok}>
-                      Licitálok
-                    </Button>
 
                     <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
                       <div>
@@ -1567,17 +1612,25 @@ export default function ListingDetailPage() {
                       <Input
                         placeholder="Pl. 50000"
                         value={maxBidAmount}
-                        onChange={(e) => setMaxBidAmount(e.target.value)}
+                        onChange={(e) => {
+                          setMaxBidAmount(e.target.value);
+                          if (!maxBidTouched) setMaxBidTouched(true);
+                        }}
+                        onBlur={() => setMaxBidTouched(true)}
                         inputMode="decimal"
                         className="h-12 rounded-xl"
                       />
+
+                      {maxBidTouched && maxBidError ? (
+                        <div className="text-xs text-destructive">{maxBidError}</div>
+                      ) : null}
 
                       <Button
                         type="button"
                         variant="secondary"
                         className="h-12 w-full rounded-xl"
-                        onClick={placeMaxBid}
-                        disabled={maxBidLoading || status.ended || isOwner}
+                        onClick={placeMaximumBid}
+                        disabled={maxBidLoading || !maxBidValidation.ok}
                       >
                         {maxBidLoading ? "Beállítás..." : "Maximum licit beállítása"}
                       </Button>
@@ -1611,38 +1664,40 @@ export default function ListingDetailPage() {
                         </AlertDialogContent>
                       </AlertDialog>
                     )}
+
                     {sessionUserId && !isOwner && !status.ended && (
-  <Button
-    variant="outline"
-    className="h-12 w-full rounded-xl"
-    onClick={async () => {
-      try {
-        const res = await fetch("/api/chat/get-or-create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            listingId,
-            sellerId: listing.user_id,
-          }),
-        });
+                      <Button
+                        variant="outline"
+                        className="h-12 w-full rounded-xl"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/chat/get-or-create", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                listingId,
+                                sellerId: listing.user_id,
+                              }),
+                            });
 
-        const data = await res.json();
+                            const data = await res.json();
 
-        if (!res.ok) {
-          toast.error(data?.error || "Nem sikerült megnyitni a chatet.");
-          return;
-        }
+                            if (!res.ok) {
+                              toast.error(data?.error || "Nem sikerült megnyitni a chatet.");
+                              return;
+                            }
 
-        window.location.href = `/chat/${data.threadId}`;
-      } catch (e: any) {
-        toast.error("Chat hiba");
-      }
-    }}
-  >
-    <MessageSquare className="mr-2 h-4 w-4" />
-    Kapcsolat az eladóval
-  </Button>
-)}
+                            window.location.href = `/chat/${data.threadId}`;
+                          } catch {
+                            toast.error("Chat hiba");
+                          }
+                        }}
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4" />
+                        Kapcsolat az eladóval
+                      </Button>
+                    )}
+
                     {!sessionUserId ? (
                       <p className="text-xs text-muted-foreground">
                         Licitáláshoz be kell jelentkezni:{" "}

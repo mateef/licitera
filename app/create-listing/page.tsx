@@ -490,7 +490,7 @@ export default function CreateListingPage() {
           const { data: pub } = supabase.storage
             .from("listing-images")
             .getPublicUrl(path);
-          uploadedUrls.push(pub.publicUrl);
+          uploadedUrls.push(`${pub.publicUrl}?t=${Date.now()}_${i}`);
         }
       }
 
@@ -676,9 +676,6 @@ export default function CreateListingPage() {
                   onChange={(e) => setTitle(e.target.value)}
                   className="h-12 rounded-xl"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Legyen rövid és beszédes. A jó cím több licitet hoz.
-                </p>
               </div>
 
               <div className="space-y-2">
