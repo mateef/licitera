@@ -71,6 +71,15 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    const isEnded =
+  listing.is_active === false || !!listing.closed_at;
+
+if (!isEnded) {
+  return Response.json(
+    { error: "A tranzakciós chat csak lezárt aukció után érhető el." },
+    { status: 400 }
+  );
+}
 
     const isParticipant =
       user.id === listing.user_id || user.id === listing.winner_user_id;

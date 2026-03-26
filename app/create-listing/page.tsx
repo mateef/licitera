@@ -46,7 +46,24 @@ type CreatedListingRow = {
   id: string;
 };
 
+type ListingQuotaInfo = {
+  subscriptionTier: "free" | "standard" | "pro";
+  monthlyFreeQuota: number;
+  usedSuccessfulSales: number;
+  remainingFreeQuota: number;
+  activeListingsCount: number;
+  maxActiveAllowed: number;
+  remainingActiveSlots: number;
+  blocked: boolean;
+};
+
 const settlementItems = settlements as SettlementItem[];
+
+function getTierLabel(tier: "free" | "standard" | "pro") {
+  if (tier === "pro") return "Pro";
+  if (tier === "standard") return "Standard";
+  return "Free";
+}
 
 export default function CreateListingPage() {
   const router = useRouter();
@@ -79,6 +96,9 @@ export default function CreateListingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [aiImageLoading, setAiImageLoading] = useState(false);
   const [aiReason, setAiReason] = useState("");
+
+  const [quotaLoading, setQuotaLoading] = useState(true);
+  const [quotaInfo, setQuotaInfo] = useState<ListingQuotaInfo | null>(null);
 
   const finalCategoryId = useMemo(
     () => catL3 || catL2 || catL1 || "",
@@ -148,11 +168,24 @@ export default function CreateListingPage() {
     if (
       buyNow !== null &&
       (!Number.isFinite(buyNow) || buyNow <= 0 || buyNow <= sp)
-    )
+    ) {
       return false;
+    }
+    if (quotaInfo?.blocked) return false;
 
     return true;
-  }, [title, county, city, deliveryMode, finalCategoryId, sp, inc, hours, buyNow]);
+  }, [
+    title,
+    county,
+    city,
+    deliveryMode,
+    finalCategoryId,
+    sp,
+    inc,
+    hours,
+    buyNow,
+    quotaInfo?.blocked,
+  ]);
 
   function safeFileName(name: string) {
     return name
@@ -193,6 +226,98 @@ export default function CreateListingPage() {
     return (data ?? []) as Category[];
   }
 
+  async function loadQuotaInfo() {
+    try {
+      setQuotaLoading(true);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.session?.user?.id;
+
+      if (!uid) {
+        setQuotaInfo(null);
+        return;
+      }
+
+      const monthStartIso = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1
+      ).toISOString();
+
+      const [{ data: profile }, { data: quotaRow }, { count: activeCount }] =
+        await Promise.all([
+          supabase
+            .from("profiles")
+            .select("subscription_tier")
+            .eq("id", uid)
+            .maybeSingle(),
+          supabase
+            .from("billing_monthly_quota_usage")
+            .select(
+              "subscription_tier,monthly_free_quota,used_successful_sales,remaining_free_quota"
+            )
+            .eq("user_id", uid)
+            .eq("month_start", monthStartIso)
+            .maybeSingle(),
+          supabase
+            .from("listings")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", uid)
+            .eq("is_active", true)
+            .gt("ends_at", new Date().toISOString()),
+        ]);
+
+      const subscriptionTier =
+        ((quotaRow as any)?.subscription_tier ||
+          (profile as any)?.subscription_tier ||
+          "free") as "free" | "standard" | "pro";
+
+      const monthlyFreeQuota =
+        Number(
+          (quotaRow as any)?.monthly_free_quota ??
+            (subscriptionTier === "pro"
+              ? 20
+              : subscriptionTier === "standard"
+              ? 10
+              : 0)
+        ) || 0;
+
+      const usedSuccessfulSales =
+        Number((quotaRow as any)?.used_successful_sales ?? 0) || 0;
+
+      const remainingFreeQuota =
+        Number(
+          (quotaRow as any)?.remaining_free_quota ??
+            Math.max(monthlyFreeQuota - usedSuccessfulSales, 0)
+        ) || 0;
+
+      const activeListingsCount = Number(activeCount ?? 0) || 0;
+
+      const maxActiveAllowed =
+        subscriptionTier === "free" ? 1 : Math.max(remainingFreeQuota, 0);
+
+      const remainingActiveSlots = Math.max(
+        maxActiveAllowed - activeListingsCount,
+        0
+      );
+
+      setQuotaInfo({
+        subscriptionTier,
+        monthlyFreeQuota,
+        usedSuccessfulSales,
+        remainingFreeQuota,
+        activeListingsCount,
+        maxActiveAllowed,
+        remainingActiveSlots,
+        blocked: remainingActiveSlots <= 0,
+      });
+    } catch {
+      setQuotaInfo(null);
+    } finally {
+      setQuotaLoading(false);
+    }
+  }
+
   function handleFilesChange(fileList: FileList | null) {
     const nextFiles = fileList ? Array.from(fileList) : [];
     setFiles(nextFiles);
@@ -206,6 +331,7 @@ export default function CreateListingPage() {
 
   useEffect(() => {
     loadLevel1();
+    loadQuotaInfo();
   }, []);
 
   useEffect(() => {
@@ -333,6 +459,13 @@ export default function CreateListingPage() {
   async function createListing() {
     if (submitting) return;
 
+    if (quotaInfo?.blocked) {
+      toast.error(
+        "Jelenleg nem adhatsz fel több aktív hirdetést. Várd meg, míg egy jelenlegi aukciód lejár vagy zárul."
+      );
+      return;
+    }
+
     if (!title.trim()) return toast.error("Adj címet.");
     if (!county) return toast.error("Válassz vármegyét.");
     if (!city) return toast.error("Válassz települést.");
@@ -444,6 +577,7 @@ export default function CreateListingPage() {
         }
 
         toast.error(rawMessage);
+        await loadQuotaInfo();
         return;
       }
 
@@ -507,6 +641,7 @@ export default function CreateListingPage() {
       }
 
       toast.success("Aukció létrehozva ✅");
+      await loadQuotaInfo();
       router.push(`/listing/${listingId}`);
       router.refresh();
     } finally {
@@ -559,6 +694,60 @@ export default function CreateListingPage() {
             </CardHeader>
 
             <CardContent className="space-y-6">
+              {quotaLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  Aktív hirdetési keret betöltése...
+                </div>
+              ) : quotaInfo ? (
+                quotaInfo.blocked ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                    <div className="text-sm font-semibold text-red-900">
+                      Jelenleg nem adhatsz fel több aktív hirdetést.
+                    </div>
+                    <div className="mt-2 text-sm text-red-800">
+                      Várd meg, míg a jelenlegi aktív hirdetésed lejár vagy lezárul,
+                      és utána tudsz új aukciót indítani.
+                    </div>
+                    <div className="mt-3 text-xs text-red-700">
+                      Aktív hirdetések: {quotaInfo.activeListingsCount} /{" "}
+                      {quotaInfo.maxActiveAllowed}
+                    </div>
+                    <div className="mt-3 rounded-xl bg-white/80 p-3 text-xs text-slate-700">
+                      <span className="font-semibold text-slate-900">Tipp:</span>{" "}
+                      nagyobb csomaggal egyszerre több aktív hirdetést tudsz kezelni.
+                      {quotaInfo.subscriptionTier === "free"
+                        ? " Standarddal havi 10, Pro csomaggal havi 20 aktív helyed lehet az eladások számától függően."
+                        : " Pro csomaggal még nagyobb aktív keretet kapsz."}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="text-sm font-semibold text-emerald-900">
+                      Jelenleg még {quotaInfo.remainingActiveSlots} db hirdetést tudsz
+                      feladni.
+                    </div>
+                    <div className="mt-2 text-sm text-emerald-800">
+                      Csak ennyi aukciód lehet egyszerre aktív, hogy ne tudjon
+                      felhalmozódni rendezetlen díjtartozás.
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full bg-white px-3 py-1 text-slate-700">
+                        Csomag: {getTierLabel(quotaInfo.subscriptionTier)}
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1 text-slate-700">
+                        Aktív most: {quotaInfo.activeListingsCount} /{" "}
+                        {quotaInfo.maxActiveAllowed}
+                      </span>
+                      {quotaInfo.subscriptionTier !== "free" ? (
+                        <span className="rounded-full bg-white px-3 py-1 text-slate-700">
+                          Havi keretből maradt: {quotaInfo.remainingFreeQuota}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              ) : null}
+
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="space-y-3">
                   <Label>Képek</Label>
