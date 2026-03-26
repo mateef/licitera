@@ -124,6 +124,8 @@ export default function ListingDetailPage() {
   const [bids, setBids] = useState<BidRow[]>([]);
   const [bidAmount, setBidAmount] = useState("");
   const [maxBidAmount, setMaxBidAmount] = useState("");
+  const [myMaxBidAmount, setMyMaxBidAmount] = useState<number | null>(null);
+
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [watched, setWatched] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
@@ -144,6 +146,7 @@ export default function ListingDetailPage() {
   const [winnerDisplayName, setWinnerDisplayName] = useState("");
 
   const [maxBidLoading, setMaxBidLoading] = useState(false);
+  const [maxBidDeleting, setMaxBidDeleting] = useState(false);
 
   const [sellerDisplayName, setSellerDisplayName] = useState("");
   const [sellerRatingText, setSellerRatingText] = useState("Még nincs");
@@ -335,7 +338,7 @@ export default function ListingDetailPage() {
     setListing(data as any);
 
     const first = (data as any)?.image_urls?.[0] ?? null;
-    setSelectedImage(first);
+    setSelectedImage((prev) => prev ?? first);
 
     await loadWinnerDisplayName((data as any)?.winner_user_id ?? null);
     await loadSellerMeta((data as any)?.user_id ?? null);
@@ -380,6 +383,32 @@ export default function ListingDetailPage() {
 
     const names = await loadPublicNamesForUserIds([leaderUserId]);
     setCurrentLeaderDisplayName(names[leaderUserId] || "Ismeretlen felhasználó");
+  }
+
+  async function loadMyMaxBid() {
+    const { data: s } = await supabase.auth.getSession();
+    const uid = s.session?.user?.id;
+
+    if (!uid) {
+      setMyMaxBidAmount(null);
+      return;
+    }
+
+    const { data, error } = await supabase.rpc("get_my_max_bid", {
+      p_listing_id: listingId,
+    });
+
+    if (error) {
+      setMyMaxBidAmount(null);
+      return;
+    }
+
+    if (data === null || data === undefined) {
+      setMyMaxBidAmount(null);
+      return;
+    }
+
+    setMyMaxBidAmount(Number(data));
   }
 
   async function loadComments() {
@@ -428,6 +457,12 @@ export default function ListingDetailPage() {
 
     if (!sessionUserId) return { ok: false, error: "Licitáláshoz be kell jelentkezni." };
     if (isOwner) return { ok: false, error: "Saját aukcióra nem licitálhatsz." };
+    if (myMaxBidAmount !== null) {
+      return {
+        ok: false,
+        error: "Aktív maximum licited van. Előbb módosítsd vagy töröld azt.",
+      };
+    }
     if (!minNextBid) return { ok: false, error: "Nem számolható minimum licit." };
 
     const trimmed = bidAmount.trim();
@@ -438,7 +473,7 @@ export default function ListingDetailPage() {
     if (n < minNextBid) return { ok: false, error: `A minimum licit: ${formatHuf(minNextBid)}` };
 
     return { ok: true, error: "" };
-  }, [bidAmount, isOwner, minNextBid, sessionUserId, status.ended]);
+  }, [bidAmount, isOwner, minNextBid, sessionUserId, status.ended, myMaxBidAmount]);
 
   const maxBidValidation = useMemo(() => {
     if (status.ended) return { ok: false, error: "Az aukció lezárult." };
@@ -509,6 +544,7 @@ export default function ListingDetailPage() {
       await loadListing();
       await loadBids();
       await loadCurrentLeader();
+      await loadMyMaxBid();
     } finally {
       setBuyNowLoading(false);
     }
@@ -555,6 +591,7 @@ export default function ListingDetailPage() {
     await loadListing();
     await loadBids();
     await loadCurrentLeader();
+    await loadMyMaxBid();
   }
 
   async function placeMaximumBid() {
@@ -587,14 +624,48 @@ export default function ListingDetailPage() {
         return;
       }
 
-      toast.success("Maximum licit sikeresen beállítva ✅");
+      toast.success(
+        myMaxBidAmount !== null
+          ? "Maximum licit módosítva ✅"
+          : "Maximum licit sikeresen beállítva ✅"
+      );
       setMaxBidAmount("");
       setMaxBidTouched(false);
       await loadListing();
       await loadBids();
       await loadCurrentLeader();
+      await loadMyMaxBid();
     } finally {
       setMaxBidLoading(false);
+    }
+  }
+
+  async function deleteMaxBid() {
+    if (!sessionUserId) {
+      toast.error("Be kell jelentkezni.");
+      return;
+    }
+
+    setMaxBidDeleting(true);
+
+    try {
+      const { error } = await supabase.rpc("delete_my_max_bid", {
+        p_listing_id: listingId,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success("A maximális licited törölve lett.");
+      setMaxBidAmount("");
+      await loadListing();
+      await loadBids();
+      await loadCurrentLeader();
+      await loadMyMaxBid();
+    } finally {
+      setMaxBidDeleting(false);
     }
   }
 
@@ -701,17 +772,6 @@ export default function ListingDetailPage() {
     return `${minutes} perc`;
   }
 
-  const topBidForDisplay = useMemo(() => {
-    if (!bids.length) return null;
-
-    const sorted = [...bids].sort((a, b) => {
-      if (b.amount !== a.amount) return b.amount - a.amount;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    });
-
-    return sorted[0] ?? null;
-  }, [bids]);
-
   const rootComments = useMemo(
     () => comments.filter((x) => !x.parent_id),
     [comments]
@@ -753,6 +813,7 @@ export default function ListingDetailPage() {
         await loadBids();
         await loadCurrentLeader();
         await loadComments();
+        await loadMyMaxBid();
       } catch (e: any) {
         if (mounted) {
           setLoadError(e?.message ?? "Váratlan hiba történt.");
@@ -768,6 +829,7 @@ export default function ListingDetailPage() {
 
     const { data: authSub } = supabase.auth.onAuthStateChange(() => {
       loadSession();
+      loadMyMaxBid();
     });
 
     const channel = supabase
@@ -779,6 +841,7 @@ export default function ListingDetailPage() {
           await loadListing();
           await loadBids();
           await loadCurrentLeader();
+          await loadMyMaxBid();
         }
       )
       .on(
@@ -787,6 +850,7 @@ export default function ListingDetailPage() {
         async () => {
           await loadListing();
           await loadCurrentLeader();
+          await loadMyMaxBid();
         }
       )
       .on(
@@ -809,6 +873,7 @@ export default function ListingDetailPage() {
   useEffect(() => {
     if (!autoMinNext) return;
     if (!minNextBid) return;
+    if (myMaxBidAmount !== null) return;
 
     const current = parseBidAmount(bidAmount).n;
     const isEmpty = bidAmount.trim() === "";
@@ -818,7 +883,7 @@ export default function ListingDetailPage() {
       setBidAmount(String(minNextBid));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMinNext, minNextBid]);
+  }, [autoMinNext, minNextBid, myMaxBidAmount]);
 
   useEffect(() => {
     try {
@@ -857,6 +922,7 @@ export default function ListingDetailPage() {
                 await loadBids();
                 await loadCurrentLeader();
                 await loadComments();
+                await loadMyMaxBid();
                 setPageLoading(false);
               }}
             >
@@ -1511,6 +1577,10 @@ export default function ListingDetailPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-xs text-indigo-800">
+                      Ha az aukció utolsó 5 percében új licit érkezik, a lejárat automatikusan 5 perccel meghosszabbodik.
+                    </div>
+
                     <div className="flex items-center justify-between rounded-2xl border p-4">
                       <div className="space-y-0.5">
                         <Label htmlFor="autoMinNext" className="text-sm font-medium">
@@ -1524,6 +1594,7 @@ export default function ListingDetailPage() {
                         id="autoMinNext"
                         checked={autoMinNext}
                         onCheckedChange={(v) => setAutoMinNext(Boolean(v))}
+                        disabled={myMaxBidAmount !== null}
                       />
                     </div>
 
@@ -1534,6 +1605,18 @@ export default function ListingDetailPage() {
                           A beírt összegre azonnal licitálsz.
                         </div>
                       </div>
+
+                      {myMaxBidAmount !== null ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                          <div className="text-xs uppercase tracking-wide text-amber-700">Aktív maximális licit</div>
+                          <div className="mt-1 text-xl font-bold text-amber-900">
+                            {formatHuf(myMaxBidAmount)}
+                          </div>
+                          <div className="mt-2 text-xs text-amber-800">
+                            Amíg maximális licited van, a kézi licitálás nem érhető el. Előbb módosítsd vagy töröld azt.
+                          </div>
+                        </div>
+                      ) : null}
 
                       <Input
                         placeholder={minNextBid ? `Minimum: ${formatHuf(minNextBid)}` : "Adj meg összeget"}
@@ -1552,6 +1635,7 @@ export default function ListingDetailPage() {
                         inputMode="decimal"
                         aria-invalid={bidTouched && !!bidError}
                         className="h-12 rounded-xl"
+                        disabled={myMaxBidAmount !== null}
                       />
 
                       {bidTouched && bidError ? (
@@ -1563,7 +1647,9 @@ export default function ListingDetailPage() {
                         <span className="font-medium text-foreground">
                           {minNextBid ? formatHuf(minNextBid) : "-"}
                         </span>
-                        {autoMinNext ? <span> · Auto kitöltés bekapcsolva</span> : null}
+                        {autoMinNext && myMaxBidAmount === null ? (
+                          <span> · Auto kitöltés bekapcsolva</span>
+                        ) : null}
                       </div>
 
                       <div className="grid grid-cols-3 gap-2">
@@ -1572,7 +1658,7 @@ export default function ListingDetailPage() {
                           variant="outline"
                           className="rounded-xl"
                           onClick={() => setBidAmount(String(minNextBid ?? ""))}
-                          disabled={!minNextBid}
+                          disabled={!minNextBid || myMaxBidAmount !== null}
                         >
                           Minimum
                         </Button>
@@ -1581,7 +1667,7 @@ export default function ListingDetailPage() {
                           variant="outline"
                           className="rounded-xl"
                           onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 5))}
-                          disabled={!minNextBid}
+                          disabled={!minNextBid || myMaxBidAmount !== null}
                         >
                           +5 lépcső
                         </Button>
@@ -1590,13 +1676,17 @@ export default function ListingDetailPage() {
                           variant="outline"
                           className="rounded-xl"
                           onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 10))}
-                          disabled={!minNextBid}
+                          disabled={!minNextBid || myMaxBidAmount !== null}
                         >
                           +10 lépcső
                         </Button>
                       </div>
 
-                      <Button className="h-12 w-full rounded-xl" onClick={placeDirectBid} disabled={!bidValidation.ok}>
+                      <Button
+                        className="h-12 w-full rounded-xl"
+                        onClick={placeDirectBid}
+                        disabled={!bidValidation.ok}
+                      >
                         Licitálok
                       </Button>
                     </div>
@@ -1608,6 +1698,18 @@ export default function ListingDetailPage() {
                           Add meg a legmagasabb összeget, ameddig hajlandó vagy elmenni, a rendszer pedig automatikusan csak a szükséges minimumra licitál helyetted.
                         </div>
                       </div>
+
+                      {myMaxBidAmount !== null ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                          <div className="text-xs uppercase tracking-wide text-emerald-700">A te maximális licited</div>
+                          <div className="mt-1 text-xl font-bold text-emerald-900">
+                            {formatHuf(myMaxBidAmount)}
+                          </div>
+                          <div className="mt-2 text-xs text-emerald-800">
+                            Ez nem publikus információ, csak te látod.
+                          </div>
+                        </div>
+                      ) : null}
 
                       <Input
                         placeholder="Pl. 50000"
@@ -1625,15 +1727,33 @@ export default function ListingDetailPage() {
                         <div className="text-xs text-destructive">{maxBidError}</div>
                       ) : null}
 
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="h-12 w-full rounded-xl"
-                        onClick={placeMaximumBid}
-                        disabled={maxBidLoading || !maxBidValidation.ok}
-                      >
-                        {maxBidLoading ? "Beállítás..." : "Maximum licit beállítása"}
-                      </Button>
+                      <div className="grid gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-12 w-full rounded-xl"
+                          onClick={placeMaximumBid}
+                          disabled={maxBidLoading || !maxBidValidation.ok}
+                        >
+                          {maxBidLoading
+                            ? "Beállítás..."
+                            : myMaxBidAmount !== null
+                            ? "Maximum licit módosítása"
+                            : "Maximum licit beállítása"}
+                        </Button>
+
+                        {myMaxBidAmount !== null ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-12 w-full rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={deleteMaxBid}
+                            disabled={maxBidDeleting}
+                          >
+                            {maxBidDeleting ? "Törlés..." : "Maximum licit törlése"}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
 
                     {listing.buy_now_price && !status.ended && !isOwner && (
