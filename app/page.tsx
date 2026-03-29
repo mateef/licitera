@@ -8,7 +8,6 @@ import {
   Camera,
   ChevronRight,
   Gavel,
-  Heart,
   LayoutDashboard,
   Lock,
   Mail,
@@ -19,7 +18,6 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
-  Star,
   Trophy,
   X,
   Zap,
@@ -28,72 +26,73 @@ import {
 const FEATURES = [
   {
     icon: Brain,
-    title: "AI-segített hirdetésfeladás",
-    text: "Fotó alapján cím-, leírás- és kategóriajavaslat, hogy gyorsabban menjen ki a hirdetés.",
-  },
-  {
-    icon: Smartphone,
-    title: "Mobilra tervezett élmény",
-    text: "Gyors keresés, tiszta licitfolyamat és átlátható kezelőfelület telefonon és weben is.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Nagyobb bizalom",
-    text: "Telefonos hitelesítés, értékelések és tisztább felhasználói profilok a nyugodtabb használathoz.",
+    title: "AI-segített feladás",
+    text: "Fotó alapján cím-, leírás- és kategóriajavaslat, hogy a hirdetés ne űrlapkitöltés legyen, hanem gyors indulás.",
   },
   {
     icon: BellRing,
-    title: "Valós idejű értesítések",
-    text: "Túllicitálás, lejárat, nyert aukció és fontos account események egy helyen.",
+    title: "Valós idejű licitélmény",
+    text: "Azonnali visszajelzések, túllicitálási értesítések és sokkal tisztább aukciós ritmus.",
+  },
+  {
+    icon: Smartphone,
+    title: "Mobilra tervezett UX",
+    text: "Gyors, modern, tiszta felület, ami nem csak működik telefonon, hanem arra lett optimalizálva.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Bizalom és hitelesítés",
+    text: "Telefonos hitelesítés, értékelések és átláthatóbb profilélmény a nyugodtabb használathoz.",
   },
   {
     icon: MessageSquareMore,
     title: "Belső chat",
-    text: "Sikeres aukció után a felek egyszerűbben tudnak egyeztetni a platformon belül.",
+    text: "Sikeres aukció után egyszerűbb egyeztetés a platformon belül, fölösleges körök nélkül.",
   },
   {
     icon: LayoutDashboard,
     title: "Átlátható dashboard",
-    text: "Aktív aukciók, nyert tételek, értékelések és account állapot tisztán, felesleges zaj nélkül.",
+    text: "Aktív aukciók, megnyert tételek, értesítések és account állapot egy helyen.",
   },
 ];
 
-const STEPS = [
+const FLOW = [
   {
-    number: "01",
+    index: "01",
     icon: Camera,
     title: "Fotózd le",
-    text: "Tölts fel egy képet, és indítsd el gyorsabban a feladást.",
+    text: "Indulj egy képpel, ne egy hosszú űrlappal.",
   },
   {
-    number: "02",
+    index: "02",
     icon: SearchCheck,
-    title: "Találd meg",
-    text: "Keresés, szűrés és releváns találatok gyors, tiszta felületen.",
+    title: "Add fel gyorsan",
+    text: "Az AI segít struktúrálni a hirdetést és lerövidíti a feladási időt.",
   },
   {
-    number: "03",
+    index: "03",
     icon: Zap,
-    title: "Licitálj",
-    text: "Könnyen követhető licitfolyamat, azonnali visszajelzésekkel.",
+    title: "Licitálj élőben",
+    text: "Tisztán követhető licitfolyamat valós idejű visszajelzésekkel.",
   },
   {
-    number: "04",
+    index: "04",
     icon: Trophy,
-    title: "Nyerd meg",
-    text: "Értesítések, kapcsolatfelvétel és rendezettebb lezárási élmény.",
+    title: "Zárd le egyszerűbben",
+    text: "Nyertes aukció, értesítés és kapcsolatfelvétel rendezettebb módon.",
   },
 ];
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div className="inline-flex rounded-full border border-white/12 bg-white/8 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">
+    <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-white/60 backdrop-blur-xl">
+      <span className="h-2 w-2 rounded-full bg-fuchsia-400 shadow-[0_0_18px_rgba(217,70,239,0.95)]" />
       {children}
     </div>
   );
 }
 
-function GlassPanel({
+function Glass({
   children,
   className = "",
 }: {
@@ -101,8 +100,31 @@ function GlassPanel({
   className?: string;
 }) {
   return (
-    <div className={`rounded-[1.75rem] border border-white/10 bg-white/[0.06] backdrop-blur-2xl ${className}`}>
+    <div
+      className={`overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(16,23,42,0.72),rgba(10,14,28,0.82))] backdrop-blur-2xl ${className}`}
+    >
       {children}
+    </div>
+  );
+}
+
+function CounterCard({
+  value,
+  label,
+  glow,
+}: {
+  value: string;
+  label: string;
+  glow: string;
+}) {
+  return (
+    <div className="group relative overflow-hidden rounded-[1.7rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4 sm:p-5">
+      <div className={`absolute inset-x-0 top-0 h-[2px] ${glow}`} />
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10 blur-3xl transition duration-500 group-hover:scale-125" />
+      <div className="relative text-[10px] uppercase tracking-[0.26em] text-white/38">{label}</div>
+      <div className="relative mt-3 text-4xl font-black tracking-[-0.08em] text-white sm:text-5xl">
+        {value}
+      </div>
     </div>
   );
 }
@@ -126,28 +148,42 @@ export default function HomePage() {
     days: 0,
     hours: 0,
     minutes: 0,
+    seconds: 0,
+    percent: 0,
     isLive: false,
   });
 
   useEffect(() => {
+    const start = new Date("2026-03-01T00:00:00").getTime();
+
     function updateTimeLeft() {
       const now = new Date().getTime();
-      const distance = launchDate.getTime() - now;
+      const end = launchDate.getTime();
+      const distance = end - now;
 
       if (distance <= 0) {
-        setTimeParts({ days: 0, hours: 0, minutes: 0, isLive: true });
+        setTimeParts({
+          days: 0,
+          hours: 0,
+          minutes: 0,
+          seconds: 0,
+          percent: 100,
+          isLive: true,
+        });
         return;
       }
 
       const days = Math.floor(distance / (1000 * 60 * 60 * 24));
       const hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
       const minutes = Math.floor((distance / (1000 * 60)) % 60);
+      const seconds = Math.floor((distance / 1000) % 60);
+      const percent = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
 
-      setTimeParts({ days, hours, minutes, isLive: false });
+      setTimeParts({ days, hours, minutes, seconds, percent, isLive: false });
     }
 
     updateTimeLeft();
-    const timer = setInterval(updateTimeLeft, 30_000);
+    const timer = setInterval(updateTimeLeft, 1000);
     return () => clearInterval(timer);
   }, [launchDate]);
 
@@ -232,15 +268,20 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(135deg,#dbeafe_0%,#f8fafc_48%,#f5d0fe_100%)] px-3 py-3 text-white sm:px-4 sm:py-4">
-      <div className="relative overflow-hidden rounded-[2rem] bg-[#060816] shadow-[0_30px_90px_rgba(15,23,42,0.18)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.28),transparent_30%),radial-gradient(circle_at_top_right,rgba(217,70,239,0.22),transparent_28%),radial-gradient(circle_at_bottom,rgba(99,102,241,0.20),transparent_32%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,8,22,0.12),rgba(6,8,22,0.86))]" />
+    <main className="min-h-screen overflow-x-hidden bg-[#040714] text-white">
+      <div className="relative min-h-screen overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_18%,rgba(59,130,246,0.22),transparent_24%),radial-gradient(circle_at_85%_12%,rgba(168,85,247,0.18),transparent_22%),radial-gradient(circle_at_50%_72%,rgba(236,72,153,0.12),transparent_28%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,#040714_0%,#07101f_38%,#040714_100%)]" />
 
-        <header className="relative z-10 mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+        <div className="absolute left-[7%] top-[12%] h-2 w-2 animate-pulse rounded-full bg-white/80" />
+        <div className="absolute right-[10%] top-[22%] h-3 w-3 animate-pulse rounded-full bg-fuchsia-300/80" />
+        <div className="absolute bottom-[16%] left-[12%] h-2.5 w-2.5 animate-pulse rounded-full bg-sky-300/80" />
+
+        <header className="relative z-20 mx-auto flex w-full max-w-[1580px] items-center justify-between px-4 py-5 sm:px-6 lg:px-10">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-[0_10px_30px_rgba(59,130,246,0.18)] backdrop-blur-xl">
-              <span className="bg-gradient-to-br from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-xl font-black text-transparent">
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-[0_18px_40px_rgba(59,130,246,0.18)] backdrop-blur-xl">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-400/25 via-indigo-400/10 to-fuchsia-400/25" />
+              <span className="relative bg-gradient-to-br from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-xl font-black text-transparent">
                 L
               </span>
             </div>
@@ -251,7 +292,7 @@ export default function HomePage() {
                   LICITERA
                 </span>
               </div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+              <div className="text-[11px] uppercase tracking-[0.28em] text-white/38">
                 A licitálás új korszaka
               </div>
             </div>
@@ -260,200 +301,355 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => setShowLogin(true)}
-            className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition hover:bg-white/15 sm:px-5"
+            className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white/15 sm:px-5"
           >
             Belépés
           </button>
         </header>
 
-        <section className="relative z-10 mx-auto w-full max-w-[1440px] px-4 pb-14 pt-4 sm:px-6 lg:px-8 lg:pb-20">
-          <div className="grid gap-10 xl:grid-cols-[minmax(0,1.02fr)_minmax(460px,0.98fr)] xl:items-center">
-            <div className="max-w-3xl">
-              <SectionLabel>Zárt tesztelés · Hamarosan indul</SectionLabel>
-
-              <h1 className="mt-5 text-5xl font-black leading-[0.92] tracking-tight text-white sm:text-6xl xl:text-8xl">
-                A licitálás
-                <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
-                  új korszaka
-                </span>
-              </h1>
-
-              <p className="mt-5 max-w-2xl text-base leading-7 text-white/72 sm:text-lg xl:text-xl xl:leading-8">
-                Egy modern magyar aukciós piactér, ahol a hirdetésfeladás, a licitálás és a teljes
-                felhasználói élmény végre gyors, tiszta és átlátható mobilon és weben is.
-              </p>
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Indulás", timeParts.isLive ? "ÉLŐ" : String(timeParts.days), timeParts.isLive ? "most" : "nap"],
-                  ["Hátra", timeParts.isLive ? "0" : String(timeParts.hours), "óra"],
-                  ["Utolsó", timeParts.isLive ? "0" : String(timeParts.minutes), "perc"],
-                ].map(([label, value, unit]) => (
-                  <GlassPanel key={label} className="p-4 shadow-[0_18px_60px_rgba(6,8,22,0.35)]">
-                    <div className="text-xs uppercase tracking-[0.18em] text-white/45">{label}</div>
-                    <div className="mt-2 text-3xl font-extrabold text-white xl:text-4xl">{value}</div>
-                    <div className="mt-1 text-sm text-white/65">{unit}</div>
-                  </GlassPanel>
-                ))}
+        <section className="relative z-10 mx-auto w-full max-w-[1580px] px-4 pb-20 pt-4 sm:px-6 lg:px-10 lg:pb-28 lg:pt-8">
+          <div className="grid gap-12 xl:grid-cols-[minmax(0,1.02fr)_minmax(540px,0.98fr)] xl:items-center">
+            <div className="max-w-4xl">
+              <div className="animate-[fadeIn_700ms_ease-out]">
+                <Label>Zárt tesztelés · Limitált indulás</Label>
               </div>
 
-              {waitlistCount !== null && (
-                <div className="mt-6 inline-flex items-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 backdrop-blur-xl">
-                  Már {waitlistCount} érdeklődő várja az indulást
-                </div>
-              )}
+              <div className="mt-6 animate-[slideUp_850ms_ease-out]">
+                <h1 className="text-5xl font-black leading-[0.88] tracking-[-0.07em] text-white sm:text-6xl lg:text-7xl xl:text-[6.5rem]">
+                  Ilyennek kellett volna
+                  <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
+                    mindig lennie
+                  </span>
+                  <span className="block text-white/90">egy modern aukciós platformnak</span>
+                </h1>
+              </div>
 
-              <GlassPanel className="mt-8 p-5 shadow-[0_22px_70px_rgba(6,8,22,0.4)]">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-white">Kérj értesítést az indulásról</div>
-                    <div className="mt-1 text-sm text-white/62">
-                      Elsőként tudhatod meg, amikor megnyitjuk a Liciterát.
+              <div className="mt-6 animate-[slideUp_1050ms_ease-out]">
+                <p className="max-w-2xl text-base leading-7 text-white/72 sm:text-lg xl:text-[1.16rem] xl:leading-8">
+                  A Licitera egy új generációs magyar aukciós piactér: AI-segített hirdetésfeladás,
+                  valós idejű licitek, villámár, 1–72 órás lejárat és egy olyan mobilos UX, ami végre
+                  nem fárasztó.
+                </p>
+              </div>
+
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center animate-[slideUp_1200ms_ease-out]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    document.getElementById("waitlist")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    })
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-fuchsia-500 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_50px_rgba(99,102,241,0.45)] transition hover:-translate-y-0.5 hover:scale-[1.01]"
+                >
+                  Értesítést kérek
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewZoom(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-6 py-3 text-sm font-semibold text-white/90 backdrop-blur-xl transition hover:bg-white/[0.1]"
+                >
+                  Nagyított előnézet
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-10 animate-[slideUp_1350ms_ease-out]">
+                <Glass className="p-4 shadow-[0_24px_80px_rgba(5,10,30,0.36)] sm:p-5">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.26em] text-white/38">
+                        Indulásig hátralévő idő
+                      </div>
+                      <div className="mt-2 max-w-xl text-sm leading-6 text-white/62">
+                        Már nem csak készül. Már rajtra hangolva várja az indulást.
+                      </div>
+                    </div>
+
+                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-medium text-emerald-200">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {timeParts.isLive ? "Elindult" : "Készen áll a rajtra"}
                     </div>
                   </div>
 
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
-                    <Lock className="h-3.5 w-3.5" />
-                    Zárt indulási szakasz
+                  <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <CounterCard
+                      value={timeParts.isLive ? "00" : String(timeParts.days).padStart(2, "0")}
+                      label="nap"
+                      glow="bg-gradient-to-r from-sky-400 to-blue-500"
+                    />
+                    <CounterCard
+                      value={timeParts.isLive ? "00" : String(timeParts.hours).padStart(2, "0")}
+                      label="óra"
+                      glow="bg-gradient-to-r from-indigo-400 to-violet-500"
+                    />
+                    <CounterCard
+                      value={timeParts.isLive ? "00" : String(timeParts.minutes).padStart(2, "0")}
+                      label="perc"
+                      glow="bg-gradient-to-r from-fuchsia-400 to-pink-500"
+                    />
+                    <CounterCard
+                      value={timeParts.isLive ? "00" : String(timeParts.seconds).padStart(2, "0")}
+                      label="másodperc"
+                      glow="bg-gradient-to-r from-cyan-400 to-sky-500"
+                    />
                   </div>
-                </div>
 
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <input
-                    placeholder="Email címed"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-12 flex-1 rounded-2xl border border-white/12 bg-white px-4 text-black outline-none placeholder:text-gray-500"
-                  />
-
-                  <button
-                    onClick={handleWaitlistSignup}
-                    disabled={emailLoading}
-                    className="h-12 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-fuchsia-500 px-6 font-semibold text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:scale-[1.01] hover:opacity-95 disabled:opacity-60"
-                  >
-                    {emailLoading ? "Küldés..." : "Értesítést kérek"}
-                  </button>
-                </div>
-
-                {emailMsg && <p className="mt-3 text-sm text-white/88">{emailMsg}</p>}
-              </GlassPanel>
+                  <div className="mt-5 rounded-[1.35rem] border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-white/36">
+                      <span>Indulási progress</span>
+                      <span>{Math.round(timeParts.percent)}%</span>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#60a5fa_0%,#818cf8_45%,#e879f9_100%)] shadow-[0_0_28px_rgba(129,140,248,0.65)] transition-all duration-1000"
+                        style={{ width: `${timeParts.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                </Glass>
+              </div>
             </div>
 
-            <div className="relative mx-auto w-full max-w-[640px] xl:ml-auto">
-              <div className="absolute -inset-8 rounded-[3rem] bg-gradient-to-br from-blue-500/20 via-indigo-500/10 to-fuchsia-500/20 blur-3xl" />
+            <div className="relative mx-auto w-full max-w-[760px] animate-[slideUp_1100ms_ease-out] xl:ml-auto">
+              <div className="absolute -inset-10 rounded-[3rem] bg-[radial-gradient(circle,rgba(99,102,241,0.28),transparent_58%)] blur-3xl" />
 
-              <GlassPanel className="relative overflow-hidden p-3 shadow-[0_24px_100px_rgba(6,8,22,0.58)] sm:p-4">
-                <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    Előnézet
+              <Glass className="relative p-0 shadow-[0_40px_120px_rgba(0,0,0,0.38)]">
+                <div className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-4 py-3 sm:px-5">
+                  <div className="flex items-center justify-between text-sm text-white/72">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.8)]" />
+                      App preview
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviewZoom(true)}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/85 transition hover:bg-white/10"
+                    >
+                      Nagyítás
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowPreviewZoom(true)}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/10"
-                  >
-                    Nagyítás
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
                 </div>
 
-                <div className="overflow-hidden rounded-[1.65rem] border border-white/10 bg-[#0b1020] p-3 sm:p-4">
-                  <div className="space-y-4">
-                    <div className="rounded-[1.5rem] bg-gradient-to-r from-blue-500/18 via-indigo-500/16 to-fuchsia-500/16 p-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.16em] text-white/45">Licitera app</div>
-                          <div className="mt-2 text-3xl font-black leading-tight text-white">
-                            Letisztult aukciós élmény
-                            <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
-                              felesleges zaj nélkül
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="hidden rounded-2xl bg-black/20 px-3 py-2 text-right sm:block">
-                          <div className="text-[10px] uppercase tracking-[0.16em] text-white/40">Hátra</div>
-                          <div className="mt-1 text-sm font-semibold text-white">2 ó 14 p</div>
-                        </div>
-                      </div>
-                    </div>
+                <div className="grid gap-4 bg-[linear-gradient(180deg,#0b1324_0%,#0d162b_100%)] p-4 xl:grid-cols-[1.08fr_0.92fr]">
+                  <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,#0b1324_0%,#0d162b_100%)] p-4 shadow-[0_25px_90px_rgba(0,0,0,0.45)]">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(96,165,250,0.18),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(217,70,239,0.16),transparent_24%)]" />
 
                     <div className="relative">
-                      <div className="flex h-12 items-center rounded-full border border-white/10 bg-white/5 px-4 pl-11 text-sm text-white/60">
-                        Keress terméket, kategóriát vagy kulcsszót...
+                      <div className="text-[10px] uppercase tracking-[0.24em] text-white/35">
+                        Mobil főképernyő
                       </div>
-                      <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      <div className="mt-2 text-2xl font-black leading-tight text-white sm:text-3xl">
+                        A Licitera
+                        <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
+                          tényleg jól néz ki használat közben is
+                        </span>
+                      </div>
+
+                      <div className="mt-5 overflow-hidden rounded-[1.7rem] border border-white/10 bg-white/[0.04] p-2">
+                        <img
+                          src="/landing-preview-main.png"
+                          alt="Licitera app előnézet"
+                          className="block w-full rounded-[1.35rem] object-cover"
+                        />
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        {[
+                          { icon: MapPinned, label: "Helyalapú keresés" },
+                          { icon: Gavel, label: "Élő licit" },
+                          { icon: Mail, label: "Gyors kapcsolat" },
+                        ].map((item, index) => {
+                          const Icon = item.icon;
+
+                          return (
+                            <div
+                              key={index}
+                              className="rounded-[1.25rem] border border-white/8 bg-white/[0.05] p-3"
+                            >
+                              <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white/10 text-white">
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div className="mt-3 text-xs font-semibold leading-5 text-white/88 sm:text-sm">
+                                {item.label}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4">
+                    <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-4 backdrop-blur-2xl">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40">
+                        <Brain className="h-4 w-4" />
+                        AI feladás
+                      </div>
+
+                      <div className="mt-4 overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-2">
+                        <img
+                          src="/landing-preview-ai.png"
+                          alt="AI hirdetésfeladás előnézet"
+                          className="block w-full rounded-[1.1rem] object-cover"
+                        />
+                      </div>
+
+                      <div className="mt-3 text-sm leading-6 text-white/66">
+                        Kép alapján gyorsabb cím-, leírás- és kategóriajavaslat, hogy a feladás ne
+                        legyen hosszú folyamat.
+                      </div>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      {[
-  { icon: MapPinned, label: "Helyalapú keresés" },
-  { icon: Gavel, label: "Okos licitlogika" },
-  { icon: Mail, label: "Automatikus értesítés" },
-].map((item, index) => {
-  const Icon = item.icon;
+                    <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-4 backdrop-blur-2xl">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40">
+                        <BellRing className="h-4 w-4" />
+                        Chat és értesítések
+                      </div>
 
-  return (
-    <div key={index} className="rounded-2xl bg-white/5 p-4">
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white">
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="mt-3 text-sm font-semibold text-white">{item.label}</div>
-    </div>
-  );
-})}
-                    </div>
-
-                    <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.04]">
-                      <div className="aspect-[16/10] bg-[linear-gradient(135deg,#1e293b,#334155,#475569)]" />
-                      <div className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-start">
-                        <div>
-                          <div className="text-lg font-bold text-white">Kiemelt aukció</div>
-                          <div className="mt-1 text-sm leading-6 text-white/60">
-                            Egyszerűen követhető hirdetésnézet, tiszta hierarchia és erős mobilos megjelenés.
-                          </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                        <div className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-2">
+                          <img
+                            src="/landing-preview-chat.png"
+                            alt="Belső chat előnézet"
+                            className="block w-full rounded-[1.1rem] object-cover"
+                          />
                         </div>
-                        <div className="rounded-2xl bg-black/25 px-3 py-2 text-right">
-                          <div className="text-[10px] uppercase tracking-[0.16em] text-white/40">Jelenlegi licit</div>
-                          <div className="mt-1 text-lg font-black text-white">112 000 Ft</div>
+
+                        <div className="rounded-[1.4rem] border border-white/8 bg-white/[0.05] p-4">
+                          <div className="text-sm font-semibold text-white">Nem csak látványosabb</div>
+                          <div className="mt-2 text-sm leading-6 text-white/64">
+                            A cél a gyorsabb feladás, az érthetőbb licitfolyamat és a letisztult
+                            mobilos élmény.
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </GlassPanel>
+              </Glass>
             </div>
           </div>
         </section>
 
-        <section className="relative z-10 px-4 pb-8 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1440px]">
+        <section id="waitlist" className="relative z-10 px-4 pb-10 sm:px-6 lg:px-10">
+          <div className="mx-auto max-w-[1580px]">
+            <Glass className="p-6 shadow-[0_28px_90px_rgba(5,10,30,0.34)] sm:p-8 lg:p-10">
+              <div className="grid gap-8 xl:grid-cols-[0.92fr_1.08fr] xl:items-center">
+                <div>
+                  <Label>Korai hozzáférés</Label>
+                  <h2 className="mt-4 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+                    Kérj értesítést még az indulás előtt
+                  </h2>
+                  <p className="mt-4 max-w-xl text-base leading-7 text-white/68">
+                    Ha elsőként akarod látni a platform nyitását, a mobilapp indulását és a korai
+                    frissítéseket, csatlakozz a várólistához.
+                  </p>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    {["Web + mobil", "AI-alapú feladás", "Automatikus licit", "Villámár + 72 óra"].map(
+                      (item) => (
+                        <div
+                          key={item}
+                          className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white/82"
+                        >
+                          {item}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-5 sm:p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Várólista</div>
+                      <div className="mt-1 text-sm text-white/62">
+                        Add meg az emailed, és szólunk, amikor megnyílik a Licitera.
+                      </div>
+                    </div>
+
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
+                      <Lock className="h-3.5 w-3.5" />
+                      Limitált indulás
+                    </div>
+                  </div>
+
+                  {waitlistCount !== null ? (
+                    <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">
+                        Érdeklődők
+                      </div>
+                      <div className="mt-2 text-4xl font-black tracking-[-0.05em] text-white">
+                        {waitlistCount}
+                      </div>
+                      <div className="mt-1 text-sm text-white/60">
+                        feliratkozó várja az indulást
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                    <div className="relative flex-1">
+                      <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                      <input
+                        placeholder="Email címed"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="h-13 w-full rounded-2xl border border-white/12 bg-white pl-11 pr-4 text-black outline-none placeholder:text-gray-500"
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleWaitlistSignup}
+                      disabled={emailLoading}
+                      className="h-13 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-fuchsia-500 px-6 font-semibold text-white shadow-[0_14px_35px_rgba(99,102,241,0.4)] transition hover:-translate-y-0.5 hover:opacity-95 disabled:opacity-60"
+                    >
+                      {emailLoading ? "Küldés..." : "Feliratkozom"}
+                    </button>
+                  </div>
+
+                  {emailMsg ? <p className="mt-3 text-sm text-white/88">{emailMsg}</p> : null}
+                </div>
+              </div>
+            </Glass>
+          </div>
+        </section>
+
+        <section className="relative z-10 px-4 pb-10 sm:px-6 lg:px-10">
+          <div className="mx-auto max-w-[1580px]">
             <div className="max-w-3xl">
-              <SectionLabel>Fő előnyök</SectionLabel>
-              <h2 className="mt-4 text-3xl font-black tracking-tight text-white sm:text-4xl">
-                Tisztábban, gyorsabban, modernebben
+              <Label>Miért más?</Label>
+              <h2 className="mt-4 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+                Nem csak látványosabb. Sokkal használhatóbb is.
               </h2>
-              <p className="mt-3 text-sm leading-7 text-white/65 sm:text-base">
-                A fókusz most nem a látványos zajon van, hanem azon, hogy a rendszer érthető, gyors és
-                használható legyen minden kijelzőn.
+              <p className="mt-4 text-base leading-7 text-white/68">
+                A fókusz a sebességen, a mobilos élményen és az átlátható aukciós logikán van.
               </p>
             </div>
 
             <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {FEATURES.map((item) => {
+              {FEATURES.map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <div
                     key={item.title}
-                    className="rounded-[1.6rem] border border-white/10 bg-white/[0.05] p-5"
+                    className="group relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-5 transition duration-300 hover:-translate-y-1 hover:border-white/18 hover:bg-white/[0.07]"
+                    style={{ animationDelay: `${index * 70}ms` }}
                   >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
-                      <Icon className="h-5 w-5" />
+                    <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/10 blur-3xl transition duration-500 group-hover:scale-125" />
+                    <div className="relative">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="mt-4 text-lg font-semibold text-white">{item.title}</div>
+                      <div className="mt-2 text-sm leading-6 text-white/65">{item.text}</div>
                     </div>
-                    <div className="mt-4 text-lg font-semibold text-white">{item.title}</div>
-                    <div className="mt-2 text-sm leading-6 text-white/65">{item.text}</div>
                   </div>
                 );
               })}
@@ -461,45 +657,59 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="relative z-10 px-4 pb-16 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1440px]">
-            <div className="max-w-3xl">
-              <SectionLabel>Hogyan működik?</SectionLabel>
-              <h2 className="mt-4 text-3xl font-black tracking-tight text-white sm:text-4xl">
-                Fotótól a nyertes licitig
-              </h2>
-            </div>
+        <section className="relative z-10 px-4 pb-24 sm:px-6 lg:px-10">
+          <div className="mx-auto max-w-[1580px]">
+            <div className="grid gap-8 xl:grid-cols-[0.82fr_1.18fr] xl:items-start">
+              <div>
+                <Label>Feladástól a nyerésig</Label>
+                <h2 className="mt-4 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+                  Egy flow, amit tényleg jó végigvinni
+                </h2>
+                <p className="mt-4 max-w-xl text-base leading-7 text-white/68">
+                  A cél egy olyan aukciós élmény, ami gyorsabb, tisztább és élvezhetőbb, mint amit a
+                  régi piactereknél megszoktál.
+                </p>
+              </div>
 
-            <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {STEPS.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.title} className="rounded-[1.65rem] border border-white/10 bg-white/[0.05] p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
-                        <Icon className="h-5 w-5" />
+              <div className="grid gap-4 md:grid-cols-2">
+                {FLOW.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.title}
+                      className="group rounded-[1.85rem] border border-white/10 bg-white/[0.05] p-5 transition duration-300 hover:-translate-y-1 hover:bg-white/[0.07]"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="text-xs font-semibold tracking-[0.22em] text-white/28">
+                          {item.index}
+                        </div>
                       </div>
-                      <div className="text-xs font-semibold tracking-[0.18em] text-white/35">{item.number}</div>
-                    </div>
 
-                    <div className="mt-4 text-lg font-semibold text-white">{item.title}</div>
-                    <div className="mt-2 text-sm leading-6 text-white/65">{item.text}</div>
-                    <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-white/80">
-                      Tovább
-                      <ArrowRight className="h-4 w-4" />
+                      <div className="mt-5 text-xl font-semibold text-white">{item.title}</div>
+                      <div className="mt-2 text-sm leading-6 text-white/65">{item.text}</div>
+                      <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-white/82">
+                        Következő lépés
+                        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </section>
 
         {showLogin && (
           <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-6 sm:pt-10">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setShowLogin(false)} />
+            <div
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+              onClick={() => setShowLogin(false)}
+            />
 
-            <div className="relative z-10 mb-6 w-full max-w-md rounded-[2rem] border border-white/15 bg-[#0b1021]/90 p-6 text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+            <div className="relative z-10 mb-6 w-full max-w-md rounded-[2rem] border border-white/15 bg-[#0b1021]/92 p-6 text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
               <button
                 type="button"
                 onClick={() => setShowLogin(false)}
@@ -561,26 +771,53 @@ export default function HomePage() {
               <X className="h-5 w-5" />
             </button>
 
-            <div className="w-full max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b1021]/80 shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+            <div className="w-full max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b1021]/90 shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
               <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 text-sm text-white/70">
                 <div className="flex items-center gap-2">
                   <Smartphone className="h-4 w-4" />
                   Mobilos előnézet / nagyítás
                 </div>
-                <div className="hidden text-white/45 sm:block">Telefonon csippentéssel is nagyítható</div>
+                <div className="hidden text-white/45 sm:block">
+                  Telefonon csippentéssel is nagyítható
+                </div>
               </div>
 
-              <div className="max-h-[85vh] overflow-auto bg-black" style={{ touchAction: "pan-x pan-y pinch-zoom" }}>
+              <div
+                className="max-h-[85vh] overflow-auto bg-[#050816]"
+                style={{ touchAction: "pan-x pan-y pinch-zoom" }}
+              >
                 <img
-                  src="/landing-bg.png"
+                  src="/landing-preview-zoom.png"
                   alt="Licitera előnézet nagyítva"
-                  className="w-full object-contain object-top"
+                  className="block w-full object-contain object-top"
                 />
               </div>
             </div>
           </div>
         )}
       </div>
+
+      <style jsx global>{`
+        @keyframes slideUp {
+          0% {
+            opacity: 0;
+            transform: translateY(24px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes fadeIn {
+          0% {
+            opacity: 0;
+          }
+          100% {
+            opacity: 1;
+          }
+        }
+      `}</style>
     </main>
   );
 }

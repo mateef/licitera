@@ -36,32 +36,24 @@ export default function RootLayout({
           geistSans.variable,
           geistMono.variable,
           "min-h-screen antialiased relative overflow-x-hidden",
-          "bg-gradient-to-br from-blue-100 via-white to-fuchsia-100",
+          "bg-[#040714] text-white",
           "flex flex-col",
         ].join(" ")}
       >
-        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-48 -left-48 h-[650px] w-[650px] rounded-full bg-blue-500/20 blur-3xl" />
-          <div className="absolute -bottom-48 -right-48 h-[650px] w-[650px] rounded-full bg-fuchsia-500/20 blur-3xl" />
-          <div className="absolute left-1/2 top-[-220px] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-indigo-500/10 blur-3xl" />
-        </div>
-
         <Suspense fallback={null}>
           <SiteHeader />
         </Suspense>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-          <div className="rounded-2xl bg-background/75 backdrop-blur-md border shadow-sm p-4 sm:p-6">
-            {children}
-          </div>
+        <main className="w-full flex-1">
+          {children}
         </main>
 
-        <footer className="mt-10 border-t bg-background/60 backdrop-blur">
+        <footer className="border-t border-white/10 bg-black/20 backdrop-blur">
           <div className="mx-auto max-w-6xl px-4 py-10 text-center">
-            <p className="text-base sm:text-lg font-semibold bg-gradient-to-r from-blue-700 via-indigo-600 to-fuchsia-600 bg-clip-text text-transparent">
+            <p className="text-base font-semibold text-white/90 sm:text-lg">
               A licitálás új korszaka.
             </p>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-white/50">
               Csak licit • Gyors • Átlátható
             </p>
           </div>
