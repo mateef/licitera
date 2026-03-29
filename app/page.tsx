@@ -156,7 +156,7 @@ export default function HomePage() {
   });
 
   useEffect(() => {
-    const start = new Date("2026-03-01T00:00:00").getTime();
+    const start = new Date("2025-07-01T00:00:00").getTime();
 
     function updateTimeLeft() {
       const now = new Date().getTime();
