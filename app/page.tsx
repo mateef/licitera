@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+
 import {
   ArrowRight,
   BellRing,
@@ -281,9 +283,13 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-[0_18px_40px_rgba(59,130,246,0.18)] backdrop-blur-xl">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-400/25 via-indigo-400/10 to-fuchsia-400/25" />
-              <span className="relative bg-gradient-to-br from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-xl font-black text-transparent">
-                L
-              </span>
+              <Image
+  src="/icon.png"
+  alt="Licitera"
+  width={28}
+  height={28}
+  className="relative"
+/>
             </div>
 
             <div>
@@ -314,15 +320,15 @@ export default function HomePage() {
                 <Label>Zárt tesztelés · Limitált indulás</Label>
               </div>
 
-              <div className="mt-6 animate-[slideUp_850ms_ease-out]">
-                <h1 className="text-5xl font-black leading-[0.88] tracking-[-0.07em] text-white sm:text-6xl lg:text-7xl xl:text-[6.5rem]">
-                  Ilyennek kellett volna
-                  <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
-                    mindig lennie
-                  </span>
-                  <span className="block text-white/90">egy modern aukciós platformnak</span>
-                </h1>
-              </div>
+              <div className="mt-6 animate-[slideUp_850ms_ease-out] overflow-visible pb-4">
+  <h1 className="text-5xl font-black leading-[1.06] tracking-[-0.07em] text-white sm:text-6xl lg:text-7xl xl:text-[6.5rem]">
+        Ilyennek kellett volna
+    <span className="block bg-gradient-to-r from-blue-300 via-indigo-200 to-fuchsia-300 bg-clip-text text-transparent">
+      mindig lennie
+    </span>
+    <span className="block text-white/90">egy modern aukciós platformnak</span>
+  </h1>
+</div>
 
               <div className="mt-6 animate-[slideUp_1050ms_ease-out]">
                 <p className="max-w-2xl text-base leading-7 text-white/72 sm:text-lg xl:text-[1.16rem] xl:leading-8">
