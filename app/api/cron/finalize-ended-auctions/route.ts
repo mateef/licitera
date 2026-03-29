@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { createNotification } from "@/lib/notifications/createNotification";
+import { createAndSendNotification } from "@/lib/notifications/createAndSendNotification";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,8 +68,7 @@ export async function POST(req: NextRequest) {
 
     const { data: listings, error: listingsError } = await supabase
       .from("listings")
-      .select(
-        `
+      .select(`
         id,
         title,
         user_id,
@@ -81,8 +80,7 @@ export async function POST(req: NextRequest) {
         closed_at,
         winner_user_id,
         final_price
-      `
-      )
+      `)
       .eq("is_active", true)
       .is("closed_at", null)
       .lte("ends_at", nowIso);
@@ -178,22 +176,64 @@ export async function POST(req: NextRequest) {
         const formattedPrice = formatHufAmount(finalPrice);
 
         if (listing.user_id) {
-          await createNotification({
+          await createAndSendNotification({
             userId: listing.user_id,
             type: "auction_sold",
             title: "Lejárt az aukciód, és lett nyertes",
             message: `Nyertes licit érkezett erre: ${listing.title}`,
             link: `/listing/${listing.id}`,
+            entityType: "listing",
+            entityId: listing.id,
+            uniqueKey: `auction_sold:${listing.id}:${listing.user_id}`,
+            data: {
+              listingId: listing.id,
+              type: "auction_sold",
+            },
           });
         }
 
-        await createNotification({
+        await createAndSendNotification({
           userId: topBid.user_id,
           type: "auction_won",
           title: "Megnyertél egy aukciót",
           message: `Sikeresen megnyerted ezt az aukciót: ${listing.title}`,
           link: `/listing/${listing.id}`,
+          entityType: "listing",
+          entityId: listing.id,
+          uniqueKey: `auction_won:${listing.id}:${topBid.user_id}`,
+          data: {
+            listingId: listing.id,
+            type: "auction_won",
+          },
         });
+
+        const losingBidderIds = Array.from(
+          new Set(
+            bidRows
+              .map((bid) => bid.user_id)
+              .filter(
+                (userId): userId is string =>
+                  !!userId && userId !== topBid.user_id
+              )
+          )
+        );
+
+        for (const losingUserId of losingBidderIds) {
+          await createAndSendNotification({
+            userId: losingUserId,
+            type: "auction_lost",
+            title: "Nem te nyerted az aukciót",
+            message: `Lezárult az aukció, de nem te nyertél: ${listing.title}`,
+            link: `/listing/${listing.id}`,
+            entityType: "listing",
+            entityId: listing.id,
+            uniqueKey: `auction_lost:${listing.id}:${losingUserId}`,
+            data: {
+              listingId: listing.id,
+              type: "auction_lost",
+            },
+          });
+        }
 
         const from = process.env.LICITERA_FROM_EMAIL;
 
@@ -213,8 +253,8 @@ export async function POST(req: NextRequest) {
                 <p><strong>${listing.title}</strong></p>
                 <p><strong>Nyertes licit:</strong> ${formattedPrice}</p>
                 <p>
-                    A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
-                    a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
+                  A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
+                  a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
                 </p>
                 <p><strong>Nyertes neve:</strong> ${winner.full_name || "Nincs megadva"}</p>
                 <p><strong>Nyertes email címe:</strong> ${winner.email}</p>
@@ -240,8 +280,8 @@ export async function POST(req: NextRequest) {
                 <p><strong>${listing.title}</strong></p>
                 <p><strong>Nyertes licit:</strong> ${formattedPrice}</p>
                 <p>
-                    A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
-                    a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
+                  A Licitera a sikeres tranzakció után megosztja a kapcsolattartási adatokat
+                  a két fél között, hogy gyorsan egyeztetni tudjátok az átvételt.
                 </p>
                 <p><strong>Eladó neve:</strong> ${seller.full_name || "Nincs megadva"}</p>
                 <p><strong>Eladó email címe:</strong> ${seller.email}</p>
@@ -286,12 +326,19 @@ export async function POST(req: NextRequest) {
         processed += 1;
 
         if (listing.user_id) {
-          await createNotification({
+          await createAndSendNotification({
             userId: listing.user_id,
             type: "listing_expired_no_bids",
             title: "Lejárt egy aukciód licit nélkül",
             message: `Erre a hirdetésre nem érkezett licit: ${listing.title}`,
             link: `/listing/${listing.id}`,
+            entityType: "listing",
+            entityId: listing.id,
+            uniqueKey: `listing_expired_no_bids:${listing.id}:${listing.user_id}`,
+            data: {
+              listingId: listing.id,
+              type: "listing_expired_no_bids",
+            },
           });
         }
       }
