@@ -26,6 +26,9 @@ import {
   Heart,
   Shield,
   LogOut,
+  Sparkles,
+  Plus,
+  Compass,
 } from "lucide-react";
 
 type ProfileRow = {
@@ -64,8 +67,7 @@ export function SiteHeader() {
 
   useEffect(() => {
     function onScroll() {
-      const y = window.scrollY;
-      setIsCompact(y > 40);
+      setIsCompact(window.scrollY > 40);
     }
 
     onScroll();
@@ -150,11 +152,8 @@ export function SiteHeader() {
     const q = search.trim();
     const params = new URLSearchParams(searchParams.toString());
 
-    if (q) {
-      params.set("q", q);
-    } else {
-      params.delete("q");
-    }
+    if (q) params.set("q", q);
+    else params.delete("q");
 
     router.push(`/listings?${params.toString()}`);
   }
@@ -167,36 +166,44 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/85 backdrop-blur-2xl">
+    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur-2xl">
       <div
         className={`transition-all duration-300 ${
-          isCompact ? "shadow-[0_8px_30px_rgba(15,23,42,0.06)]" : ""
+          isCompact ? "shadow-[0_12px_34px_rgba(15,23,42,0.07)]" : ""
         }`}
       >
         <div
           className={`overflow-hidden transition-all duration-300 ${
-            isCompact ? "max-h-0 opacity-0" : "max-h-20 opacity-100"
+            isCompact ? "max-h-0 opacity-0" : "max-h-24 opacity-100"
           }`}
         >
-          <div className="mx-auto max-w-6xl px-4">
-            <div className="flex min-h-11 items-center justify-between gap-3 py-2 text-xs text-slate-500">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex min-h-12 items-center justify-between gap-3 py-2 text-xs text-slate-500">
               <div className="min-w-0 truncate">
                 {sessionUserId ? (
-                  <span className="text-slate-700">
-                    Üdv{displayName ? `, ${displayName}` : ""}!
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-700">
+                      Üdv{displayName ? `, ${displayName}` : ""}!
+                    </span>
+                    <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 sm:inline-flex">
+                      Licitera fiók aktív
+                    </span>
+                  </div>
                 ) : (
-                  <button
-                    onClick={() => router.push("/login")}
-                    className="font-medium text-slate-700 transition hover:text-slate-900"
-                  >
-                    Belépés / regisztráció
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="hidden text-slate-500 sm:inline">
+                      Az aukciók böngészése regisztráció nélkül is elérhető
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-medium text-indigo-700">
+                      <Compass className="h-3 w-3" />
+                      Szabad böngészés
+                    </span>
+                  </div>
                 )}
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                {sessionUserId && balance !== null && (
+                {sessionUserId && balance !== null ? (
                   <button
                     onClick={() => router.push("/billing")}
                     className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
@@ -208,15 +215,10 @@ export function SiteHeader() {
                     {balance < 0 ? "⚠ " : ""}
                     {new Intl.NumberFormat("hu-HU").format(balance)} Ft
                   </button>
-                )}
-
-                {!sessionUserId && (
-                  <button
-                    onClick={() => router.push("/create-listing")}
-                    className="hidden rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 sm:inline-flex"
-                  >
-                    Eladás indítása
-                  </button>
+                ) : (
+                  <span className="hidden rounded-full bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 sm:inline-flex">
+                    Licitáláshoz bejelentkezés szükséges
+                  </span>
                 )}
               </div>
             </div>
@@ -226,7 +228,7 @@ export function SiteHeader() {
         </div>
 
         <div
-          className={`mx-auto max-w-6xl px-4 transition-all duration-300 ${
+          className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 transition-all duration-300 ${
             isCompact ? "py-2" : "py-3"
           }`}
         >
@@ -237,19 +239,20 @@ export function SiteHeader() {
             >
               <div
                 className={`font-black leading-none tracking-tight transition-all duration-300 ${
-                  isCompact ? "text-[1.35rem] sm:text-[1.55rem]" : "text-[1.8rem] sm:text-[2rem]"
+                  isCompact ? "text-[1.35rem] sm:text-[1.55rem]" : "text-[1.85rem] sm:text-[2.05rem]"
                 }`}
               >
                 <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-pink-600 bg-clip-text text-transparent">
                   Licitera
                 </span>
               </div>
+
               <div
-                className={`overflow-hidden text-xs text-slate-500 transition-all duration-300 ${
-                  isCompact ? "max-h-0 opacity-0" : "mt-0.5 max-h-10 opacity-100 sm:block"
-                } hidden`}
+                className={`hidden overflow-hidden text-xs text-slate-500 transition-all duration-300 sm:block ${
+                  isCompact ? "max-h-0 opacity-0" : "mt-0.5 max-h-10 opacity-100"
+                }`}
               >
-                Aukciók licitre
+                A licitálás új korszaka
               </div>
             </button>
 
@@ -298,7 +301,7 @@ export function SiteHeader() {
                   </DropdownMenuTrigger>
 
                   <DropdownMenuContent align="end" className="w-64 rounded-2xl p-2">
-                    {isAdmin && (
+                    {isAdmin ? (
                       <DropdownMenuItem
                         onClick={() => router.push("/admin")}
                         className="rounded-xl py-3"
@@ -306,7 +309,7 @@ export function SiteHeader() {
                         <Shield className="mr-2 h-4 w-4" />
                         Admin felület
                       </DropdownMenuItem>
-                    )}
+                    ) : null}
 
                     <DropdownMenuItem
                       onClick={() => router.push("/profile")}
@@ -365,20 +368,33 @@ export function SiteHeader() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Button
-                  className={`${isCompact ? "h-10 px-3" : "h-11 px-4"} rounded-full`}
-                  onClick={() => router.push("/login")}
-                >
-                  Belépés
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    className={`${isCompact ? "h-10 px-3" : "h-11 px-4"} hidden rounded-full border-slate-200 bg-white sm:inline-flex`}
+                    onClick={() => router.push("/register")}
+                  >
+                    Regisztráció
+                  </Button>
+
+                  <Button
+                    className={`${isCompact ? "h-10 px-3" : "h-11 px-4"} rounded-full`}
+                    onClick={() => router.push("/login")}
+                  >
+                    Belépés
+                  </Button>
+                </>
               )}
 
               <Button
                 className={`${isCompact ? "h-10 px-3" : "h-11 px-4"} rounded-full shadow-sm`}
-                onClick={() => router.push("/create-listing")}
+                onClick={() =>
+                  sessionUserId ? router.push("/create-listing") : router.push("/login")
+                }
               >
-                <span className="sm:hidden">{isCompact ? "+" : "+ Eladás"}</span>
-                <span className="hidden sm:inline">{isCompact ? "+ Aukció" : "+ Aukció"}</span>
+                <Plus className="mr-2 h-4 w-4" />
+                <span className="sm:hidden">Eladás</span>
+                <span className="hidden sm:inline">Aukció feladása</span>
               </Button>
             </div>
           </div>
@@ -437,7 +453,7 @@ export function SiteHeader() {
                 Összes aukció
               </Button>
 
-              {mounted && (
+              {mounted ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -473,28 +489,28 @@ export function SiteHeader() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-              )}
+              ) : null}
             </div>
           </div>
 
-          {!sessionUserId && !isCompact && (
+          {!sessionUserId && !isCompact ? (
             <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 sm:hidden">
               <Button
                 variant="outline"
                 className="h-10 shrink-0 rounded-full"
-                onClick={() => router.push("/my-listings")}
+                onClick={() => router.push("/register")}
               >
-                Saját aukciók
+                Regisztráció
               </Button>
               <Button
                 variant="outline"
                 className="h-10 shrink-0 rounded-full"
-                onClick={() => router.push("/watchlist")}
+                onClick={() => router.push("/login")}
               >
-                Figyelőlista
+                Belépés
               </Button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

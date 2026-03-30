@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
@@ -53,21 +54,12 @@ export default function RootLayout({
         </Suspense>
 
         <main className="relative w-full flex-1">
-          <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             {children}
           </div>
         </main>
 
-        <footer className="relative border-t border-slate-200/80 bg-white/70 backdrop-blur-xl">
-          <div className="mx-auto max-w-7xl px-4 py-10 text-center sm:px-6 lg:px-8">
-            <p className="bg-gradient-to-r from-blue-700 via-indigo-600 to-fuchsia-600 bg-clip-text text-base font-semibold text-transparent sm:text-lg">
-              A licitálás új korszaka.
-            </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Csak licit • Gyors • Átlátható
-            </p>
-          </div>
-        </footer>
+        <SiteFooter />
 
         <Toaster richColors />
       </body>

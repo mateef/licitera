@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { formatHuf } from "@/lib/format";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { MessageCircle } from "lucide-react";
 
 type Listing = {
   id: string;
@@ -45,13 +53,17 @@ type WinnerProfileRow = {
 };
 
 export default function MyListingsPage() {
+  const router = useRouter();
+
   const [uid, setUid] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteReasons, setDeleteReasons] = useState<Record<string, string>>({});
   const [winnerNames, setWinnerNames] = useState<Record<string, string>>({});
+  const [openingChatFor, setOpeningChatFor] = useState<string | null>(null);
 
   const [now, setNow] = useState<number>(Date.now());
+
   useEffect(() => {
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -85,6 +97,11 @@ export default function MyListingsPage() {
     const lastNameInitial = parts[0].charAt(0).toUpperCase();
 
     return `${firstName} ${lastNameInitial}.`;
+  }
+
+  function getIsActiveListing(listing: Listing, currentNow: number) {
+    const ends = new Date(listing.ends_at).getTime();
+    return listing.is_active && !listing.closed_at && ends > currentNow;
   }
 
   function canDeleteDirectly(listing: Listing) {
@@ -139,16 +156,18 @@ export default function MyListingsPage() {
   async function init() {
     setLoading(true);
 
-    const { data } = await supabase.auth.getSession();
-    const userId = data.session?.user?.id ?? null;
-    setUid(userId);
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
-      setListings([]);
-      setLoading(false);
+      router.replace("/login?next=/my-listings");
       return;
     }
 
+    setUid(userId);
     await loadMyListings(userId);
   }
 
@@ -156,8 +175,8 @@ export default function MyListingsPage() {
     const { data, error } = await supabase
       .from("listings")
       .select(
-  "id,title,current_price,ends_at,created_at,image_urls,image_paths,renewal_count,final_price,buy_now_price,winner_user_id,is_active,closed_at,bids(count)"
-)
+        "id,title,current_price,ends_at,created_at,image_urls,image_paths,renewal_count,final_price,buy_now_price,winner_user_id,is_active,closed_at,bids(count)"
+      )
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -168,7 +187,7 @@ export default function MyListingsPage() {
       return;
     }
 
-    const formatted =
+    const formatted: Listing[] =
       data?.map((item: any) => ({
         ...item,
         bid_count: item.bids?.[0]?.count ?? 0,
@@ -178,8 +197,21 @@ export default function MyListingsPage() {
         winner_user_id: item.winner_user_id ?? null,
       })) ?? [];
 
-    setListings(formatted);
-    await loadWinnerNames(formatted);
+    const sorted = [...formatted].sort((a, b) => {
+      const aActive = getIsActiveListing(a, Date.now());
+      const bActive = getIsActiveListing(b, Date.now());
+
+      if (aActive !== bActive) return aActive ? -1 : 1;
+
+      if (aActive && bActive) {
+        return new Date(a.ends_at).getTime() - new Date(b.ends_at).getTime();
+      }
+
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    setListings(sorted);
+    await loadWinnerNames(sorted);
     setLoading(false);
   }
 
@@ -262,40 +294,80 @@ export default function MyListingsPage() {
     await loadMyListings(uid);
   }
 
+  async function openChatForListing(listing: Listing) {
+    if (!uid || !listing.winner_user_id) return;
+
+    setOpeningChatFor(listing.id);
+
+    try {
+      const res = await fetch("/api/chat/get-or-create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          listingId: listing.id,
+          sellerId: uid,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült megnyitni a chatet.");
+        return;
+      }
+
+      window.location.href = `/chat/${data.threadId}`;
+    } catch {
+      toast.error("Chat hiba.");
+    } finally {
+      setOpeningChatFor(null);
+    }
+  }
+
   useEffect(() => {
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeCount = useMemo(() => {
-  const t = now;
-  return listings.filter((l) => {
-    const endsInFuture = new Date(l.ends_at).getTime() > t;
-    return l.is_active && !l.closed_at && endsInFuture;
-  }).length;
-}, [listings, now]);
+    return listings.filter((l) => getIsActiveListing(l, now)).length;
+  }, [listings, now]);
 
   const endedCount = useMemo(() => listings.length - activeCount, [listings.length, activeCount]);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Saját aukciók</h1>
-          <p className="text-sm text-muted-foreground">
-            Itt látod az általad létrehozott aukciókat, és innen tudsz törölni vagy megújítani.
-          </p>
-        </div>
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(219,234,254,0.85),rgba(255,255,255,0.96),rgba(245,208,254,0.72))] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+              Saját aukciók
+            </h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Itt látod az általad létrehozott aukciókat. Az aktív aukciók mindig előre kerülnek.
+            </p>
+          </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <a href="/listings">Vissza a listához</a>
-          </Button>
-          <Button asChild>
-            <a href="/create-listing">Új aukció</a>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="rounded-full" asChild>
+              <a href="/listings">Vissza a listához</a>
+            </Button>
+
+            <Button variant="outline" className="rounded-full" asChild>
+              <a href="/chat">
+                <MessageCircle className="mr-2 h-4 w-4" />
+                Chat
+              </a>
+            </Button>
+
+            <Button className="rounded-full" asChild>
+              <a href="/create-listing">Új aukció</a>
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
       <div className="flex flex-wrap gap-2">
         <Badge variant="secondary">Összesen: {listings.length}</Badge>
@@ -303,238 +375,234 @@ export default function MyListingsPage() {
         <Badge variant="outline">Lejárt: {endedCount}</Badge>
       </div>
 
-      {!uid && !loading && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Nem vagy bejelentkezve</CardTitle>
-            <CardDescription>Jelentkezz be, hogy lásd a saját aukcióidat.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button asChild>
-              <a href="/login">Bejelentkezés</a>
-            </Button>
-            <Button variant="outline" asChild>
-              <a href="/listings">Aukciók böngészése</a>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {uid && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {loading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="overflow-hidden">
-                <Skeleton className="h-44 w-full" />
-                <CardHeader>
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-2/3" />
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </CardContent>
-              </Card>
-            ))
-          ) : listings.length === 0 ? (
-            <Card className="sm:col-span-2">
+      <div className="grid gap-4 sm:grid-cols-2">
+        {loading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="overflow-hidden rounded-[1.75rem]">
+              <Skeleton className="h-44 w-full" />
               <CardHeader>
-                <CardTitle className="text-base">Még nincs aukciód</CardTitle>
-                <CardDescription>Indíts egyet, és meg fog jelenni itt.</CardDescription>
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-4 w-2/3" />
               </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                <Button asChild>
-                  <a href="/create-listing">Aukció indítása</a>
-                </Button>
-                <Button variant="outline" asChild>
-                  <a href="/listings">Aukciók böngészése</a>
-                </Button>
+              <CardContent className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-10 w-full" />
               </CardContent>
             </Card>
-          ) : (
-            listings.map((l) => {
-              const ends = new Date(l.ends_at).getTime();
-const isActive = l.is_active && !l.closed_at && ends > now;
-              const cover = l.image_urls?.[0] ?? null;
-              const directDeleteAllowed = canDeleteDirectly(l);
-              const renewAllowed = canRenewListing(l);
+          ))
+        ) : listings.length === 0 ? (
+          <Card className="sm:col-span-2 rounded-[1.75rem]">
+            <CardHeader>
+              <CardTitle className="text-base">Még nincs aukciód</CardTitle>
+              <CardDescription>Indíts egyet, és meg fog jelenni itt.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button asChild>
+                <a href="/create-listing">Aukció indítása</a>
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="/listings">Aukciók böngészése</a>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          listings.map((l) => {
+            const isActive = getIsActiveListing(l, now);
+            const cover = l.image_urls?.[0] ?? null;
+            const directDeleteAllowed = canDeleteDirectly(l);
+            const renewAllowed = canRenewListing(l);
 
-              const winnerName = l.winner_user_id
-                ? winnerNames[l.winner_user_id] || "Betöltés..."
-                : "";
+            const winnerName = l.winner_user_id
+              ? winnerNames[l.winner_user_id] || "Betöltés..."
+              : "";
 
-              const wonByBuyNow =
-                !!l.final_price &&
-                !!l.buy_now_price &&
-                l.final_price === l.buy_now_price;
+            const wonByBuyNow =
+              !!l.final_price &&
+              !!l.buy_now_price &&
+              l.final_price === l.buy_now_price;
 
-              const winningAmount = l.final_price ?? l.current_price;
+            const winningAmount = l.final_price ?? l.current_price;
 
-              return (
-                <Card key={l.id} className="overflow-hidden transition hover:shadow-md">
-                  <div className="relative">
-                    {cover ? (
-                      <a href={`/listing/${l.id}`}>
-                        <img
-                          src={cover}
-                          alt={l.title}
-                          className="h-44 w-full object-cover transition-transform duration-300 hover:scale-[1.03]"
-                        />
-                      </a>
-                    ) : (
-                      <div className="h-44 w-full bg-muted" />
-                    )}
+            return (
+              <Card
+                key={l.id}
+                className="overflow-hidden rounded-[1.75rem] border-slate-200/80 transition hover:shadow-md"
+              >
+                <div className="relative">
+                  {cover ? (
+                    <a href={`/listing/${l.id}`}>
+                      <img
+                        src={cover}
+                        alt={l.title}
+                        className="h-44 w-full object-cover transition-transform duration-300 hover:scale-[1.03]"
+                      />
+                    </a>
+                  ) : (
+                    <div className="h-44 w-full bg-muted" />
+                  )}
 
-                    <div className="absolute left-3 top-3 flex gap-2">
-                      {isActive ? <Badge>Aktív</Badge> : <Badge variant="destructive">Lejárt</Badge>}
-                      {!isActive && wonByBuyNow ? (
-                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
-                          ⚡ Villámáron elkelt
-                        </Badge>
-                      ) : null}
-                    </div>
+                  <div className="absolute left-3 top-3 flex gap-2">
+                    {isActive ? <Badge>Aktív</Badge> : <Badge variant="destructive">Lejárt</Badge>}
+                    {!isActive && wonByBuyNow ? (
+                      <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                        ⚡ Villámáron elkelt
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    <a href={`/listing/${l.id}`} className="hover:underline">
+                      {l.title}
+                    </a>
+                  </CardTitle>
+                  <CardDescription>
+                    Lejár: {new Date(l.ends_at).toLocaleString()} · Hátralévő idő:{" "}
+                    <span className="font-medium text-foreground">{timeLeftText(l.ends_at)}</span>
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {isActive ? "Jelenlegi licit" : "Záró ár"}
+                    </span>
+                    <span className="font-semibold">
+                      {formatHuf(isActive ? l.current_price : l.final_price ?? l.current_price)}
+                    </span>
                   </div>
 
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      <a href={`/listing/${l.id}`} className="hover:underline">
-                        {l.title}
-                      </a>
-                    </CardTitle>
-                    <CardDescription>
-                      Lejár: {new Date(l.ends_at).toLocaleString()} · Hátralévő idő:{" "}
-                      <span className="font-medium text-foreground">{timeLeftText(l.ends_at)}</span>
-                    </CardDescription>
-                  </CardHeader>
-
-                  <CardContent className="space-y-3 text-sm">
-                    <div className="flex justify-between">
-  <span className="text-muted-foreground">
-    {isActive ? "Jelenlegi licit" : "Záró ár"}
-  </span>
-  <span className="font-semibold">
-    {formatHuf(isActive ? l.current_price : (l.final_price ?? l.current_price))}
-  </span>
-</div>
-
-                    {!isActive && l.winner_user_id ? (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <div className="text-xs uppercase tracking-wide text-emerald-700">
-                          {wonByBuyNow ? "Villámáras vásárlás" : "Győztes licit"}
-                        </div>
-                        <div className="mt-1 font-semibold text-emerald-900">
-                          {winnerName}
-                        </div>
-                        <div className="mt-1 text-sm text-emerald-800">
-                          {wonByBuyNow ? "Villámáron megvette" : "Ennyivel nyert"}:{" "}
-                          <span className="font-semibold">{formatHuf(winningAmount)}</span>
-                        </div>
+                  {!isActive && l.winner_user_id ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <div className="text-xs uppercase tracking-wide text-emerald-700">
+                        {wonByBuyNow ? "Villámáras vásárlás" : "Győztes licit"}
                       </div>
-                    ) : !isActive && (l.bid_count ?? 0) === 0 ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                        Az aukció licit nélkül járt le.
+                      <div className="mt-1 font-semibold text-emerald-900">{winnerName}</div>
+                      <div className="mt-1 text-sm text-emerald-800">
+                        {wonByBuyNow ? "Villámáron megvette" : "Ennyivel nyert"}:{" "}
+                        <span className="font-semibold">{formatHuf(winningAmount)}</span>
                       </div>
-                    ) : null}
-
-                    <div className="text-xs text-muted-foreground">
-                      {(l.bid_count ?? 0) === 0 ? "Még nincs licit." : `${l.bid_count} licit érkezett.`}
                     </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      {directDeleteAllowed
-                        ? "Közvetlenül törölhető: 1 órán belül, licit nélkül."
-                        : "Közvetlen törlés nem elérhető, csak admin kérelmen keresztül."}
+                  ) : !isActive && (l.bid_count ?? 0) === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                      Az aukció licit nélkül járt le.
                     </div>
+                  ) : null}
 
-                    <div className="text-xs text-muted-foreground">
-                      Megújítások: {l.renewal_count ?? 0} / 2
-                    </div>
+                  <div className="text-xs text-muted-foreground">
+                    {(l.bid_count ?? 0) === 0 ? "Még nincs licit." : `${l.bid_count} licit érkezett.`}
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      <Button variant="outline" asChild>
-                        <a href={`/listing/${l.id}`}>Megnyitás</a>
+                  <div className="text-xs text-muted-foreground">
+                    {directDeleteAllowed
+                      ? "Közvetlenül törölhető: 1 órán belül, licit nélkül."
+                      : "Közvetlen törlés nem elérhető, csak admin kérelmen keresztül."}
+                  </div>
+
+                  <div className="text-xs text-muted-foreground">
+                    Megújítások: {l.renewal_count ?? 0} / 2
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <Button variant="outline" asChild>
+                      <a href={`/listing/${l.id}`}>Megnyitás</a>
+                    </Button>
+
+                    {l.winner_user_id ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => openChatForListing(l)}
+                        disabled={openingChatFor === l.id}
+                      >
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        {openingChatFor === l.id ? "Megnyitás..." : "Chat"}
                       </Button>
+                    ) : (
+                      <Button variant="outline" disabled>
+                        Chat
+                      </Button>
+                    )}
 
-                      {renewAllowed ? (
-                        <Button variant="secondary" onClick={() => renewListing(l.id)}>
-                          Megújítás
-                        </Button>
-                      ) : (
-                        <Button variant="secondary" disabled>
-                          Megújítás
-                        </Button>
-                      )}
+                    {renewAllowed ? (
+                      <Button variant="secondary" onClick={() => renewListing(l.id)}>
+                        Megújítás
+                      </Button>
+                    ) : (
+                      <Button variant="secondary" disabled>
+                        Megújítás
+                      </Button>
+                    )}
 
-                      {directDeleteAllowed ? (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="destructive">Törlés</Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Biztosan törlöd?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Az aukció és a feltöltött képek is törlődnek. Ez a művelet nem
-                                visszavonható. Közvetlen törlés csak a létrehozást követő 1 órán belül
-                                és licit nélkül engedélyezett.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Mégse</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteListing(l.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Törlés
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      ) : (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="secondary">Törlési kérelem</Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Törlési kérelem küldése</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Ez az aukció már nem törölhető közvetlenül. Írd le röviden, miért
-                                szeretnéd törölni, és az admin elbírálja a kérelmet.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
+                    {directDeleteAllowed ? (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive">Törlés</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Biztosan törlöd?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Az aukció és a feltöltött képek is törlődnek. Ez a művelet nem
+                              visszavonható. Közvetlen törlés csak a létrehozást követő 1 órán belül
+                              és licit nélkül engedélyezett.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Mégse</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteListing(l.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Törlés
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="secondary">Törlési kérelem</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Törlési kérelem küldése</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Ez az aukció már nem törölhető közvetlenül. Írd le röviden, miért
+                              szeretnéd törölni, és az admin elbírálja a kérelmet.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
 
-                            <textarea
-                              className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
-                              placeholder="Pl. rossz terméket töltöttem fel, hibás adatok szerepelnek, a termék megsérült..."
-                              value={deleteReasons[l.id] ?? ""}
-                              onChange={(e) =>
-                                setDeleteReasons((prev) => ({
-                                  ...prev,
-                                  [l.id]: e.target.value,
-                                }))
-                              }
-                            />
+                          <textarea
+                            className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none"
+                            placeholder="Pl. rossz terméket töltöttem fel, hibás adatok szerepelnek, a termék megsérült..."
+                            value={deleteReasons[l.id] ?? ""}
+                            onChange={(e) =>
+                              setDeleteReasons((prev) => ({
+                                ...prev,
+                                [l.id]: e.target.value,
+                              }))
+                            }
+                          />
 
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Mégse</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => createDeleteRequest(l.id, deleteReasons[l.id] ?? "")}
-                              >
-                                Kérelem küldése
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      )}
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Mégse</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => createDeleteRequest(l.id, deleteReasons[l.id] ?? "")}
+                            >
+                              Kérelem küldése
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

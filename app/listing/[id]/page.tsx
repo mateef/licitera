@@ -9,7 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
@@ -39,6 +46,8 @@ import {
 } from "lucide-react";
 import { DELIVERY_MODES } from "@/lib/hungary";
 
+type CategoryValue = { name: string } | { name: string }[] | null;
+
 type Listing = {
   id: string;
   title: string;
@@ -57,8 +66,9 @@ type Listing = {
   city: string;
   delivery_mode: string;
   buy_now_price: number | null;
-  renewal_count: number;
-  categories: { name: string } | null;
+  renewal_count: number | null;
+  is_featured?: boolean | null;
+  categories: CategoryValue;
 };
 
 type BidRow = {
@@ -79,7 +89,7 @@ type RelatedListing = {
   city: string;
   delivery_mode: string;
   buy_now_price: number | null;
-  categories: { name: string } | null;
+  categories: CategoryValue;
 };
 
 type PublicProfileRow = {
@@ -109,10 +119,18 @@ function getDeliveryModeLabel(value: string) {
   return DELIVERY_MODES.find((x) => x.value === value)?.label ?? value;
 }
 
-function getSubscriptionBadgeLabel(tier: "free" | "standard" | "pro" | null | undefined) {
+function getSubscriptionBadgeLabel(
+  tier: "free" | "standard" | "pro" | null | undefined
+) {
   if (tier === "pro") return "Pro eladó";
   if (tier === "standard") return "Standard eladó";
   return "Ingyenes csomag";
+}
+
+function getCategoryName(category: CategoryValue | undefined) {
+  if (!category) return null;
+  if (Array.isArray(category)) return category[0]?.name ?? null;
+  return category.name ?? null;
 }
 
 export default function ListingDetailPage() {
@@ -153,7 +171,9 @@ export default function ListingDetailPage() {
   const [sellerReviewCount, setSellerReviewCount] = useState<number>(0);
   const [currentLeaderDisplayName, setCurrentLeaderDisplayName] = useState("");
   const [currentLeaderUserId, setCurrentLeaderUserId] = useState<string | null>(null);
-  const [sellerSubscriptionTier, setSellerSubscriptionTier] = useState<"free" | "standard" | "pro">("free");
+  const [sellerSubscriptionTier, setSellerSubscriptionTier] = useState<
+    "free" | "standard" | "pro"
+  >("free");
   const [sellerPhoneVerified, setSellerPhoneVerified] = useState(false);
   const [bidUserNames, setBidUserNames] = useState<Record<string, string>>({});
 
@@ -232,9 +252,8 @@ export default function ListingDetailPage() {
       .eq("is_active", true)
       .gt("ends_at", nowIso)
       .neq("id", listingId)
-      .eq("categories.name", categoryName)
       .order("ends_at", { ascending: true })
-      .limit(6);
+      .limit(12);
 
     if (error) {
       setRelated([]);
@@ -242,7 +261,11 @@ export default function ListingDetailPage() {
       return;
     }
 
-    setRelated((data ?? []) as any);
+    const normalized = ((data ?? []) as unknown as RelatedListing[]).filter(
+      (item) => getCategoryName(item.categories) === categoryName
+    );
+
+    setRelated(normalized.slice(0, 6));
     setRelatedLoading(false);
   }
 
@@ -264,8 +287,7 @@ export default function ListingDetailPage() {
     }
 
     const publicName =
-      (data as any)?.public_display_name ||
-      toPublicName((data as any)?.full_name);
+      (data as any)?.public_display_name || toPublicName((data as any)?.full_name);
 
     setWinnerDisplayName(publicName || "Ismeretlen felhasználó");
   }
@@ -289,7 +311,9 @@ export default function ListingDetailPage() {
     if (profileData) {
       const row = profileData as PublicProfileRow;
       setSellerDisplayName(row.public_display_name || toPublicName(row.full_name));
-      setSellerSubscriptionTier((row.subscription_tier as "free" | "standard" | "pro" | null) ?? "free");
+      setSellerSubscriptionTier(
+        (row.subscription_tier as "free" | "standard" | "pro" | null) ?? "free"
+      );
       setSellerPhoneVerified(!!row.phone_verified);
     } else {
       setSellerDisplayName("Ismeretlen hirdető");
@@ -324,7 +348,7 @@ export default function ListingDetailPage() {
     const { data, error } = await supabase
       .from("listings")
       .select(
-        "id,title,description,current_price,starting_price,ends_at,closed_at,final_price,winner_user_id,image_urls,user_id,is_active,min_increment,county,city,delivery_mode,buy_now_price,renewal_count,categories(name)"
+        "id,title,description,current_price,starting_price,ends_at,closed_at,final_price,winner_user_id,image_urls,user_id,is_active,min_increment,county,city,delivery_mode,buy_now_price,renewal_count,is_featured,categories(name)"
       )
       .eq("id", listingId)
       .single();
@@ -335,14 +359,15 @@ export default function ListingDetailPage() {
       return;
     }
 
-    setListing(data as any);
+    const normalizedListing = data as unknown as Listing;
+    setListing(normalizedListing);
 
-    const first = (data as any)?.image_urls?.[0] ?? null;
+    const first = normalizedListing?.image_urls?.[0] ?? null;
     setSelectedImage((prev) => prev ?? first);
 
-    await loadWinnerDisplayName((data as any)?.winner_user_id ?? null);
-    await loadSellerMeta((data as any)?.user_id ?? null);
-    await loadRelated((data as any)?.categories?.name ?? null);
+    await loadWinnerDisplayName(normalizedListing?.winner_user_id ?? null);
+    await loadSellerMeta(normalizedListing?.user_id ?? null);
+    await loadRelated(getCategoryName(normalizedListing?.categories) ?? null);
   }
 
   async function loadBids() {
@@ -448,7 +473,8 @@ export default function ListingDetailPage() {
     return listing.current_price + listing.min_increment;
   }, [listing]);
 
-  const isOwner = !!sessionUserId && !!listing?.user_id && sessionUserId === listing.user_id;
+  const isOwner =
+    !!sessionUserId && !!listing?.user_id && sessionUserId === listing.user_id;
   const isLeading =
     !!sessionUserId && !!currentLeaderUserId && sessionUserId === currentLeaderUserId && !status.ended;
 
@@ -772,10 +798,7 @@ export default function ListingDetailPage() {
     return `${minutes} perc`;
   }
 
-  const rootComments = useMemo(
-    () => comments.filter((x) => !x.parent_id),
-    [comments]
-  );
+  const rootComments = useMemo(() => comments.filter((x) => !x.parent_id), [comments]);
 
   function getReplies(parentId: string) {
     return comments.filter((x) => x.parent_id === parentId);
@@ -855,7 +878,12 @@ export default function ListingDetailPage() {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "listing_comments", filter: `listing_id=eq.${listingId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "listing_comments",
+          filter: `listing_id=eq.${listingId}`,
+        },
         async () => {
           await loadComments();
         }
@@ -963,9 +991,9 @@ export default function ListingDetailPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
-              {listing.categories?.name && (
+              {getCategoryName(listing.categories) && (
                 <Badge variant="secondary" className="rounded-full px-3 py-1">
-                  {listing.categories.name}
+                  {getCategoryName(listing.categories)}
                 </Badge>
               )}
               <Badge
@@ -981,15 +1009,20 @@ export default function ListingDetailPage() {
 
               {buyNowSuccess && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-                  <div className="font-semibold text-emerald-900">Sikeres villámáras vásárlás ⚡</div>
+                  <div className="font-semibold text-emerald-900">
+                    Sikeres villámáras vásárlás ⚡
+                  </div>
                   <div className="mt-1 text-emerald-800">
-                    A vásárlás rögzítve lett. A további részleteket emailben is elküldtük az eladónak és a vevőnek.
+                    A vásárlás rögzítve lett. A további részleteket emailben is elküldtük az
+                    eladónak és a vevőnek.
                   </div>
                 </div>
               )}
 
               {status.ended ? (
-                listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price ? (
+                listing.final_price &&
+                listing.buy_now_price &&
+                listing.final_price === listing.buy_now_price ? (
                   <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
                     ⚡ Villámáron elkelt
                   </Badge>
@@ -1067,7 +1100,9 @@ export default function ListingDetailPage() {
                 localStorage.setItem("watchlist", JSON.stringify(next));
                 setWatched(!watched);
                 window.dispatchEvent(new Event("watchlist-changed"));
-                toast.success(watched ? "Levetted a figyelőlistáról" : "Hozzáadva a figyelőlistához");
+                toast.success(
+                  watched ? "Levetted a figyelőlistáról" : "Hozzáadva a figyelőlistához"
+                );
               }}
               type="button"
             >
@@ -1113,7 +1148,11 @@ export default function ListingDetailPage() {
                   title="Kép kiválasztása"
                   type="button"
                 >
-                  <img src={url} alt="thumb" className="h-20 w-20 object-cover sm:h-24 sm:w-24" />
+                  <img
+                    src={url}
+                    alt="thumb"
+                    className="h-20 w-20 object-cover sm:h-24 sm:w-24"
+                  />
                 </button>
               ))}
             </div>
@@ -1142,14 +1181,18 @@ export default function ListingDetailPage() {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-2xl bg-slate-50 p-4">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Helyszín</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">
+                        Helyszín
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {listing.county} · {listing.city}
                       </div>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 p-4">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Átvételi mód</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">
+                        Átvételi mód
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {getDeliveryModeLabel(listing.delivery_mode)}
                       </div>
@@ -1157,7 +1200,9 @@ export default function ListingDetailPage() {
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Megújítások</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Megújítások
+                    </div>
                     <div className="mt-1 font-semibold text-slate-900">{renewalCount} / 2</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {reachedRenewalLimit
@@ -1168,7 +1213,9 @@ export default function ListingDetailPage() {
 
                   {listing.buy_now_price ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                      <div className="text-xs uppercase tracking-wide text-emerald-700">Villámár</div>
+                      <div className="text-xs uppercase tracking-wide text-emerald-700">
+                        Villámár
+                      </div>
                       <div className="mt-1 text-xl font-bold text-emerald-900">
                         {formatHuf(listing.buy_now_price)}
                       </div>
@@ -1240,7 +1287,9 @@ export default function ListingDetailPage() {
                   {commentsLoading ? (
                     <p className="text-sm text-muted-foreground">Kommentek betöltése...</p>
                   ) : rootComments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Még nincs kérdés vagy komment.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Még nincs kérdés vagy komment.
+                    </p>
                   ) : (
                     <div className="space-y-4">
                       {rootComments.map((comment) => {
@@ -1350,7 +1399,8 @@ export default function ListingDetailPage() {
                     ))
                   : related.map((r) => {
                       const minNext = r.current_price + r.min_increment;
-                      const endingSoon = new Date(r.ends_at).getTime() - Date.now() < 1000 * 60 * 60;
+                      const endingSoon =
+                        new Date(r.ends_at).getTime() - Date.now() < 1000 * 60 * 60;
 
                       return (
                         <Card
@@ -1369,10 +1419,10 @@ export default function ListingDetailPage() {
                             <div className="h-40 w-full bg-muted" />
                           )}
 
-                          <div className="px-5 pt-4 flex flex-wrap items-center gap-2">
-                            {r.categories?.name ? (
+                          <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
+                            {getCategoryName(r.categories) ? (
                               <Badge variant="secondary" className="text-xs">
-                                {r.categories.name}
+                                {getCategoryName(r.categories)}
                               </Badge>
                             ) : null}
                             {endingSoon ? (
@@ -1415,7 +1465,7 @@ export default function ListingDetailPage() {
                             ) : null}
 
                             <div className="flex items-center justify-between">
-                              <span className="text-muted-foreground flex items-center gap-1">
+                              <span className="flex items-center gap-1 text-muted-foreground">
                                 <Clock className="h-4 w-4" />
                                 Hátralévő idő
                               </span>
@@ -1449,7 +1499,9 @@ export default function ListingDetailPage() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Hirdető</div>
+                        <div className="text-xs uppercase tracking-wide text-slate-500">
+                          Hirdető
+                        </div>
                         <a
                           href={listing.user_id ? `/profile/${listing.user_id}` : "#"}
                           className="mt-1 inline-flex items-center gap-2 font-semibold text-slate-900 hover:underline"
@@ -1461,7 +1513,11 @@ export default function ListingDetailPage() {
                         <div className="mt-2 flex flex-wrap gap-2">
                           <Badge
                             variant={sellerSubscriptionTier === "pro" ? "default" : "secondary"}
-                            className={sellerSubscriptionTier === "pro" ? "bg-amber-500 hover:bg-amber-500 text-white" : ""}
+                            className={
+                              sellerSubscriptionTier === "pro"
+                                ? "bg-amber-500 text-white hover:bg-amber-500"
+                                : ""
+                            }
                           >
                             {getSubscriptionBadgeLabel(sellerSubscriptionTier)}
                           </Badge>
@@ -1477,27 +1533,35 @@ export default function ListingDetailPage() {
                       </div>
 
                       <div className="text-right">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Értékelés</div>
+                        <div className="text-xs uppercase tracking-wide text-slate-500">
+                          Értékelés
+                        </div>
                         <div className="mt-1 inline-flex items-center gap-1 font-semibold text-slate-900">
                           <Star className="h-4 w-4 fill-current" />
                           {sellerRatingText}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {sellerReviewCount > 0 ? `${sellerReviewCount} értékelés` : "Még nincs értékelés"}
+                          {sellerReviewCount > 0
+                            ? `${sellerReviewCount} értékelés`
+                            : "Még nincs értékelés"}
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Jelenlegi licit</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Jelenlegi licit
+                    </div>
                     <div className="mt-1 text-3xl font-black tracking-tight text-slate-900">
                       {formatHuf(listing.current_price)}
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                    <div className="text-xs uppercase tracking-wide text-indigo-700">Jelenleg vezet</div>
+                    <div className="text-xs uppercase tracking-wide text-indigo-700">
+                      Jelenleg vezet
+                    </div>
                     <div className="mt-1 font-semibold text-indigo-900">
                       {status.ended
                         ? winnerDisplayName || "Nincs nyertes"
@@ -1511,14 +1575,18 @@ export default function ListingDetailPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl bg-slate-50 p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Minimum lépcső</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">
+                        Minimum lépcső
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {formatHuf(listing.min_increment)}
                       </div>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Következő minimum</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">
+                        Következő minimum
+                      </div>
                       <div className="mt-1 font-semibold text-slate-900">
                         {minNextBid ? formatHuf(minNextBid) : "-"}
                       </div>
@@ -1526,8 +1594,12 @@ export default function ListingDetailPage() {
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-3">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Hátralévő idő</div>
-                    <div className="mt-1 font-semibold text-slate-900">{timeLeftText(listing.ends_at)}</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Hátralévő idő
+                    </div>
+                    <div className="mt-1 font-semibold text-slate-900">
+                      {timeLeftText(listing.ends_at)}
+                    </div>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-3">
@@ -1538,20 +1610,26 @@ export default function ListingDetailPage() {
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-3">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Átvételi mód</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Átvételi mód
+                    </div>
                     <div className="mt-1 font-semibold text-slate-900">
                       {getDeliveryModeLabel(listing.delivery_mode)}
                     </div>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-3">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Megújítások</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Megújítások
+                    </div>
                     <div className="mt-1 font-semibold text-slate-900">{renewalCount} / 2</div>
                   </div>
 
                   {listing.buy_now_price ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                      <div className="text-xs uppercase tracking-wide text-emerald-700">Villámár</div>
+                      <div className="text-xs uppercase tracking-wide text-emerald-700">
+                        Villámár
+                      </div>
                       <div className="mt-1 text-xl font-bold text-emerald-900">
                         {formatHuf(listing.buy_now_price)}
                       </div>
@@ -1562,7 +1640,9 @@ export default function ListingDetailPage() {
                 {status.ended ? (
                   <div className="rounded-2xl border border-slate-200 p-4 text-sm">
                     <div className="font-semibold text-slate-900">
-                      {listing.final_price && listing.buy_now_price && listing.final_price === listing.buy_now_price
+                      {listing.final_price &&
+                      listing.buy_now_price &&
+                      listing.final_price === listing.buy_now_price
                         ? "⚡ Villámáron elkelt"
                         : "Lezárva"}
                     </div>
@@ -1578,7 +1658,8 @@ export default function ListingDetailPage() {
                 ) : (
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-xs text-indigo-800">
-                      Ha az aukció utolsó 5 percében új licit érkezik, a lejárat automatikusan 5 perccel meghosszabbodik.
+                      Ha az aukció utolsó 5 percében új licit érkezik, a lejárat automatikusan
+                      5 perccel meghosszabbodik.
                     </div>
 
                     <div className="flex items-center justify-between rounded-2xl border p-4">
@@ -1598,7 +1679,7 @@ export default function ListingDetailPage() {
                       />
                     </div>
 
-                    <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4">
                       <div>
                         <div className="text-sm font-medium text-slate-900">Licitálás</div>
                         <div className="mt-1 text-xs text-muted-foreground">
@@ -1608,18 +1689,23 @@ export default function ListingDetailPage() {
 
                       {myMaxBidAmount !== null ? (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                          <div className="text-xs uppercase tracking-wide text-amber-700">Aktív maximális licit</div>
+                          <div className="text-xs uppercase tracking-wide text-amber-700">
+                            Aktív maximális licit
+                          </div>
                           <div className="mt-1 text-xl font-bold text-amber-900">
                             {formatHuf(myMaxBidAmount)}
                           </div>
                           <div className="mt-2 text-xs text-amber-800">
-                            Amíg maximális licited van, a kézi licitálás nem érhető el. Előbb módosítsd vagy töröld azt.
+                            Amíg maximális licited van, a kézi licitálás nem érhető el. Előbb
+                            módosítsd vagy töröld azt.
                           </div>
                         </div>
                       ) : null}
 
                       <Input
-                        placeholder={minNextBid ? `Minimum: ${formatHuf(minNextBid)}` : "Adj meg összeget"}
+                        placeholder={
+                          minNextBid ? `Minimum: ${formatHuf(minNextBid)}` : "Adj meg összeget"
+                        }
                         value={bidAmount}
                         onChange={(e) => {
                           setBidAmount(e.target.value);
@@ -1666,7 +1752,9 @@ export default function ListingDetailPage() {
                           type="button"
                           variant="outline"
                           className="rounded-xl"
-                          onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 5))}
+                          onClick={() =>
+                            setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 5))
+                          }
                           disabled={!minNextBid || myMaxBidAmount !== null}
                         >
                           +5 lépcső
@@ -1675,7 +1763,9 @@ export default function ListingDetailPage() {
                           type="button"
                           variant="outline"
                           className="rounded-xl"
-                          onClick={() => setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 10))}
+                          onClick={() =>
+                            setBidAmount(String((minNextBid ?? 0) + listing.min_increment * 10))
+                          }
                           disabled={!minNextBid || myMaxBidAmount !== null}
                         >
                           +10 lépcső
@@ -1691,17 +1781,22 @@ export default function ListingDetailPage() {
                       </Button>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4">
                       <div>
-                        <div className="text-sm font-medium text-slate-900">Automatikus maximum licit</div>
+                        <div className="text-sm font-medium text-slate-900">
+                          Automatikus maximum licit
+                        </div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Add meg a legmagasabb összeget, ameddig hajlandó vagy elmenni, a rendszer pedig automatikusan csak a szükséges minimumra licitál helyetted.
+                          Add meg a legmagasabb összeget, ameddig hajlandó vagy elmenni, a rendszer
+                          pedig automatikusan csak a szükséges minimumra licitál helyetted.
                         </div>
                       </div>
 
                       {myMaxBidAmount !== null ? (
                         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                          <div className="text-xs uppercase tracking-wide text-emerald-700">A te maximális licited</div>
+                          <div className="text-xs uppercase tracking-wide text-emerald-700">
+                            A te maximális licited
+                          </div>
                           <div className="mt-1 text-xl font-bold text-emerald-900">
                             {formatHuf(myMaxBidAmount)}
                           </div>
@@ -1850,7 +1945,9 @@ export default function ListingDetailPage() {
                       localStorage.setItem("watchlist", JSON.stringify(next));
                       setWatched(!watched);
                       window.dispatchEvent(new Event("watchlist-changed"));
-                      toast.success(watched ? "Levetted a figyelőlistáról" : "Hozzáadva a figyelőlistához");
+                      toast.success(
+                        watched ? "Levetted a figyelőlistáról" : "Hozzáadva a figyelőlistához"
+                      );
                     }}
                     type="button"
                   >
@@ -1876,7 +1973,8 @@ export default function ListingDetailPage() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Hirdetés jelentése</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Ha szerinted a hirdetés szabályt sért vagy problémás, küldj jelentést az adminnak.
+                          Ha szerinted a hirdetés szabályt sért vagy problémás, küldj jelentést az
+                          adminnak.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
 

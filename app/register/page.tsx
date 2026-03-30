@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  ArrowRight,
-  BadgeCheck,
   Check,
-  ChevronRight,
   Lock,
   Mail,
   Phone,
@@ -19,7 +16,6 @@ import {
   UserRound,
 } from "lucide-react";
 
-type AuthMode = "login" | "register";
 type Step = "auth" | "verify";
 
 type CountryOption = {
@@ -29,10 +25,6 @@ type CountryOption = {
   placeholder: string;
   minLength: number;
   maxLength: number;
-};
-
-type ProfileRow = {
-  phone_verified?: boolean | null;
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [
@@ -51,10 +43,8 @@ const COUNTRY_OPTIONS: CountryOption[] = [
 
 function normalizeLocalPhone(value: string) {
   let raw = value.replace(/[^\d]/g, "");
-
   if (raw.startsWith("00")) raw = raw.slice(2);
   if (raw.startsWith("0")) raw = raw.slice(1);
-
   return raw;
 }
 
@@ -64,7 +54,6 @@ function buildFullPhone(dialCode: string, localPhone: string) {
 
 function isValidPhoneForCountry(country: CountryOption, localPhone: string) {
   const normalized = normalizeLocalPhone(localPhone);
-
   return (
     normalized.length >= country.minLength &&
     normalized.length <= country.maxLength &&
@@ -102,48 +91,26 @@ function CheckboxRow({
   );
 }
 
-export default function LoginPage() {
-  const [mode, setMode] = useState<AuthMode>("login");
+export default function RegisterPage() {
   const [step, setStep] = useState<Step>("auth");
-
-  const [hasSession, setHasSession] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [selectedCountry, setSelectedCountry] = useState<CountryOption>(COUNTRY_OPTIONS[0]);
   const [phoneLocal, setPhoneLocal] = useState("");
-  const [smsCode, setSmsCode] = useState("");
-
-  const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
+
+  const [smsCode, setSmsCode] = useState("");
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [pendingPhone, setPendingPhone] = useState("");
 
   const [acceptedAdult, setAcceptedAdult] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
-  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
-  const [pendingPhone, setPendingPhone] = useState("");
-
   const [msg, setMsg] = useState("");
-  const [loading, setLoading] = useState<
-    "signin" | "signup" | "verify" | "resend" | "signout" | null
-  >(null);
-
-  useEffect(() => {
-    async function loadSession() {
-      const { data } = await supabase.auth.getSession();
-      setHasSession(!!data.session?.user?.id);
-    }
-
-    loadSession();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      loadSession();
-    });
-
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  const [loading, setLoading] = useState<"signup" | "verify" | "resend" | null>(null);
 
   const fullPhonePreview = useMemo(() => {
     const normalized = normalizeLocalPhone(phoneLocal);
@@ -294,7 +261,7 @@ export default function LoginPage() {
     setMsg("");
 
     if (!pendingUserId) {
-      setMsg("Hiányzik a regisztrációs folyamat felhasználóazonosítója.");
+      setMsg("Hiányzik a felhasználóazonosító.");
       toast.error("Hiányzik a felhasználóazonosító.");
       return;
     }
@@ -328,13 +295,8 @@ export default function LoginPage() {
         return;
       }
 
-      setMsg("Telefonszám hitelesítve ✅ Most már bejelentkezhetsz.");
       toast.success("Telefonszám hitelesítve.");
-
-      setStep("auth");
-      setMode("login");
-      setSmsCode("");
-      setIdentifier(email.trim().toLowerCase());
+      window.location.href = "/login";
     } finally {
       setLoading(null);
     }
@@ -377,315 +339,87 @@ export default function LoginPage() {
     }
   }
 
-  async function signIn() {
-    setMsg("");
-    setLoading("signin");
-
-    try {
-      const value = identifier.trim();
-
-      if (!isValidEmail(value)) {
-        setMsg("Belépéshez érvényes e-mail címet adj meg.");
-        toast.error("Belépéshez érvényes e-mail címet adj meg.");
-        return;
-      }
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: value.toLowerCase(),
-        password,
-      });
-
-      if (error) {
-        setMsg(error.message);
-        toast.error("Nem sikerült a belépés.");
-        return;
-      }
-
-      const userId = data.user?.id;
-
-      if (!userId) {
-        setMsg("Nem sikerült azonosítani a felhasználót.");
-        toast.error("Nem sikerült azonosítani a felhasználót.");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("phone_verified")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (profileError) {
-        setMsg(profileError.message);
-        toast.error("Nem sikerült ellenőrizni a profilt.");
-        return;
-      }
-
-      if (!(profile as ProfileRow | null)?.phone_verified) {
-        await supabase.auth.signOut();
-        setMsg("A belépéshez előbb hitelesítened kell a telefonszámodat.");
-        toast.error("A telefonszám még nincs hitelesítve.");
-        return;
-      }
-
-      setMsg("Sikeres belépés ✅");
-      toast.success("Sikeres belépés.");
-      window.location.href = "/listings";
-    } finally {
-      setLoading(null);
-    }
-  }
-
-  async function signOut() {
-    setMsg("");
-    setLoading("signout");
-
-    try {
-      await supabase.auth.signOut();
-      setMsg("Kijelentkezve.");
-      toast.success("Kijelentkeztél.");
-      setHasSession(false);
-    } finally {
-      setLoading(null);
-    }
-  }
-
   const disabled = loading !== null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <section className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(219,234,254,0.9),rgba(255,255,255,0.98),rgba(245,208,254,0.7))] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-8">
-        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 text-xs font-semibold text-slate-700">
               <Sparkles className="h-3.5 w-3.5" />
-              Licitera fiók
+              Új Licitera fiók
             </div>
 
             <h1 className="mt-4 text-4xl font-black tracking-tight text-slate-900 sm:text-5xl">
-              Belépés vagy
+              Regisztrálj és
               <span className="block bg-gradient-to-r from-blue-600 via-indigo-600 to-pink-600 bg-clip-text text-transparent">
-                regisztráció pár perc alatt
+                kezdd el a licitálást
               </span>
             </h1>
 
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-              A Licitera használatához nem kötelező azonnal belépned, az aukciókat
-              vendégként is böngészheted. Fiókkal viszont licitálni, menteni,
-              kommentelni és vásárolni is tudsz.
+              A Licitera használatához nem kötelező fiók, de regisztráció után
+              licitálhatsz, figyelőlistát használhatsz, kommentelhetsz és
+              kapcsolatba léphetsz az eladókkal.
             </p>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button asChild className="rounded-full px-6">
-                <a href="/listings">
-                  Aukciók böngészése
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </a>
-              </Button>
-
-              <Button
-                variant="outline"
-                className="rounded-full border-slate-200 bg-white/80 px-6"
-                onClick={() => {
-                  setMode("register");
-                  setStep("auth");
-                  setMsg("");
-                }}
-              >
-                Új fiók létrehozása
-              </Button>
-            </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl bg-white/75 p-4">
                 <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
-                <div className="mt-3 font-semibold text-slate-900">Biztonságosabb piactér</div>
+                <div className="mt-3 font-semibold text-slate-900">Telefonszám-hitelesítés</div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Telefonszám-hitelesítéssel csökkentett visszaélések.
+                  Több bizalom, kevesebb visszaélés.
                 </div>
               </div>
 
               <div className="rounded-2xl bg-white/75 p-4">
                 <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-                  <BadgeCheck className="h-5 w-5" />
+                  <Sparkles className="h-5 w-5" />
                 </div>
-                <div className="mt-3 font-semibold text-slate-900">Gyors regisztráció</div>
+                <div className="mt-3 font-semibold text-slate-900">Gyors indulás</div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Néhány adat, SMS ellenőrzés, és már kész is.
+                  Pár adat megadása után már indulhat is.
                 </div>
               </div>
 
               <div className="rounded-2xl bg-white/75 p-4">
                 <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-pink-100 text-pink-700">
-                  <Sparkles className="h-5 w-5" />
+                  <Check className="h-5 w-5" />
                 </div>
-                <div className="mt-3 font-semibold text-slate-900">Vendég böngészés</div>
+                <div className="mt-3 font-semibold text-slate-900">Átlátható feltételek</div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Bejelentkezés nélkül is körülnézhetsz az aukciók között.
+                  Regisztráció előtt minden fontos link elérhető.
                 </div>
               </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button asChild className="rounded-full px-6">
+                <a href="/listings">Aukciók böngészése</a>
+              </Button>
+              <Button variant="outline" asChild className="rounded-full border-slate-200 bg-white/80 px-6">
+                <a href="/login">Van már fiókom</a>
+              </Button>
             </div>
           </div>
 
           <Card className="overflow-hidden rounded-[2rem] border-slate-200/80 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
-            <CardHeader className="space-y-5 pb-4">
-              {step === "auth" && (
-                <div className="grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode("login");
-                      setMsg("");
-                    }}
-                    className={`rounded-[1rem] px-4 py-2.5 text-sm font-semibold transition ${
-                      mode === "login"
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-600 hover:bg-white"
-                    }`}
-                  >
-                    Belépés
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode("register");
-                      setMsg("");
-                    }}
-                    className={`rounded-[1rem] px-4 py-2.5 text-sm font-semibold transition ${
-                      mode === "register"
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-600 hover:bg-white"
-                    }`}
-                  >
-                    Regisztráció
-                  </button>
-                </div>
-              )}
-
-              <div>
-                <CardTitle className="text-2xl font-black tracking-tight text-slate-900">
-                  {step === "verify"
-                    ? "SMS ellenőrzés"
-                    : mode === "login"
-                    ? "Üdv újra"
-                    : "Új fiók létrehozása"}
-                </CardTitle>
-
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  {step === "verify"
-                    ? "Írd be a telefonodra kapott ellenőrző kódot."
-                    : mode === "login"
-                    ? "Jelentkezz be e-mail címmel és jelszóval."
-                    : "Add meg az adataidat, majd erősítsd meg a telefonszámodat SMS-ben."}
-                </p>
-              </div>
+            <CardHeader>
+              <CardTitle className="text-2xl font-black tracking-tight text-slate-900">
+                {step === "auth" ? "Regisztráció" : "SMS ellenőrzés"}
+              </CardTitle>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {step === "auth"
+                  ? "Add meg az adataidat, majd erősítsd meg a telefonszámodat."
+                  : "Írd be a telefonodra kapott ellenőrző kódot."}
+              </p>
             </CardHeader>
 
             <CardContent className="space-y-4">
-              {step === "verify" ? (
-                <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                    Telefonszám:
-                    <span className="ml-2 font-semibold text-slate-900">{pendingPhone}</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">SMS kód</label>
-                    <div className="relative">
-                      <BadgeCheck className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input
-                        placeholder="Írd be a kapott kódot"
-                        value={smsCode}
-                        onChange={(e) => setSmsCode(e.target.value)}
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        className="h-12 rounded-2xl border-slate-200 pl-11"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Button onClick={verifySms} disabled={disabled || !smsCode.trim()} className="rounded-2xl">
-                      {loading === "verify" ? "Ellenőrzés..." : "Kód ellenőrzése"}
-                    </Button>
-
-                    <Button variant="outline" onClick={resendSms} disabled={disabled} className="rounded-2xl">
-                      {loading === "resend" ? "Újraküldés..." : "Kód újraküldése"}
-                    </Button>
-                  </div>
-
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setStep("auth");
-                      setMsg("");
-                      setSmsCode("");
-                    }}
-                    disabled={disabled}
-                    className="w-full rounded-2xl"
-                  >
-                    Vissza
-                  </Button>
-                </>
-              ) : mode === "login" ? (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">E-mail cím</label>
-                    <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input
-                        placeholder="pelda@email.hu"
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        inputMode="email"
-                        autoComplete="email"
-                        className="h-12 rounded-2xl border-slate-200 pl-11"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Jelszó</label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input
-                        placeholder="••••••••"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        autoComplete="current-password"
-                        className="h-12 rounded-2xl border-slate-200 pl-11"
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    className="h-12 w-full rounded-2xl"
-                    onClick={signIn}
-                    disabled={disabled || !identifier.trim() || password.length < 8}
-                  >
-                    {loading === "signin" ? "Beléptetés..." : "Belépés"}
-                  </Button>
-
-                  <Button variant="outline" asChild className="h-12 w-full rounded-2xl border-slate-200">
-                    <a href="/listings">Folytatás vendégként</a>
-                  </Button>
-
-                  {!hasSession ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                      Még nincs fiókod? Fent válts át a{" "}
-                      <span className="font-semibold text-slate-900">Regisztráció</span> fülre.
-                    </div>
-                  ) : (
-                    <Button variant="secondary" onClick={signOut} disabled={disabled} className="w-full rounded-2xl">
-                      {loading === "signout" ? "Kijelentkezés..." : "Kijelentkezés"}
-                    </Button>
-                  )}
-                </>
-              ) : (
+              {step === "auth" ? (
                 <>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Teljes név</label>
@@ -703,7 +437,6 @@ export default function LoginPage() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Telefonszám</label>
-
                     <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
                       <select
                         value={selectedCountry.code}
@@ -814,20 +547,55 @@ export default function LoginPage() {
                   <Button
                     className="h-12 w-full rounded-2xl"
                     onClick={signUp}
-                    disabled={
-                      disabled ||
-                      !fullName.trim() ||
-                      !phoneLocal.trim() ||
-                      !email.trim() ||
-                      !password ||
-                      !passwordAgain
-                    }
+                    disabled={disabled}
                   >
                     {loading === "signup" ? "Regisztráció..." : "Fiók létrehozása"}
                   </Button>
 
                   <Button variant="outline" asChild className="h-12 w-full rounded-2xl border-slate-200">
                     <a href="/listings">Most inkább körülnézek</a>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    Telefonszám:
+                    <span className="ml-2 font-semibold text-slate-900">{pendingPhone}</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">SMS kód</label>
+                    <Input
+                      placeholder="Írd be a kapott kódot"
+                      value={smsCode}
+                      onChange={(e) => setSmsCode(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      className="h-12 rounded-2xl border-slate-200"
+                    />
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button onClick={verifySms} disabled={disabled || !smsCode.trim()} className="rounded-2xl">
+                      {loading === "verify" ? "Ellenőrzés..." : "Kód ellenőrzése"}
+                    </Button>
+
+                    <Button variant="outline" onClick={resendSms} disabled={disabled} className="rounded-2xl">
+                      {loading === "resend" ? "Újraküldés..." : "Kód újraküldése"}
+                    </Button>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setStep("auth");
+                      setMsg("");
+                      setSmsCode("");
+                    }}
+                    disabled={disabled}
+                    className="w-full rounded-2xl"
+                  >
+                    Vissza
                   </Button>
                 </>
               )}
@@ -840,58 +608,6 @@ export default function LoginPage() {
             </CardContent>
           </Card>
         </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-          <CardContent className="pt-6">
-            <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
-              <ChevronRight className="h-5 w-5" />
-            </div>
-            <div className="mt-4 text-lg font-black text-slate-900">ÁSZF</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              A Licitera használatának szabályai és feltételei.
-            </p>
-            <Button variant="outline" asChild className="mt-4 w-full rounded-2xl">
-              <a href="/legal/aszf">Megnyitás</a>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-          <CardContent className="pt-6">
-            <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div className="mt-4 text-lg font-black text-slate-900">Adatkezelés</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Hogyan kezeljük az adataidat a Licitera használata során.
-            </p>
-            <Button variant="outline" asChild className="mt-4 w-full rounded-2xl">
-              <a href="/legal/privacy">Megnyitás</a>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-          <CardContent className="pt-6">
-            <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-              <Phone className="h-5 w-5" />
-            </div>
-            <div className="mt-4 text-lg font-black text-slate-900">Segítség és hibajelzés</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Elérhetőségek, segítség, hiba jelentése és fontos tudnivalók.
-            </p>
-            <div className="mt-4 grid gap-2">
-              <Button variant="outline" asChild className="w-full rounded-2xl">
-                <a href="/help">Súgó</a>
-              </Button>
-              <Button variant="outline" asChild className="w-full rounded-2xl">
-                <a href="/support/report-error">Hiba jelentése</a>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </section>
     </div>
   );

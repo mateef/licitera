@@ -1,28 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   ChevronRight,
-  MessageCircle,
-  Lock,
   Clock3,
+  Lock,
+  MessageCircle,
   UserRound,
 } from "lucide-react";
 
 type ChatThreadRow = {
   id: string;
-  listing_id: string;
-  seller_id: string;
-  buyer_id: string;
+  listing_id: string | null;
+  seller_id: string | null;
+  buyer_id: string | null;
   created_at: string;
 };
 
 type ListingRow = {
   id: string;
-  title: string;
+  title: string | null;
   image_urls: string[] | null;
 };
 
@@ -30,6 +31,20 @@ type ProfileRow = {
   id: string;
   full_name: string | null;
   public_display_name: string | null;
+};
+
+type ChatThreadMemberRow = {
+  thread_id: string;
+  user_id: string;
+  last_read_at: string | null;
+};
+
+type ChatMessagePreviewRow = {
+  id: string;
+  thread_id: string;
+  sender_id: string;
+  message: string;
+  created_at: string;
 };
 
 function toPublicName(fullName: string | null | undefined) {
@@ -59,94 +74,179 @@ export default function ChatListPage() {
 
   const [listingMap, setListingMap] = useState<Record<string, ListingRow>>({});
   const [profileMap, setProfileMap] = useState<Record<string, ProfileRow>>({});
+  const [lastMessageMap, setLastMessageMap] = useState<Record<string, ChatMessagePreviewRow>>({});
+  const [memberRows, setMemberRows] = useState<ChatThreadMemberRow[]>([]);
 
   async function load() {
     setLoading(true);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const uid = session?.user?.id ?? null;
-    setUserId(uid);
+      const uid = session?.user?.id ?? null;
+      setUserId(uid);
 
-    if (!uid) {
-      setThreads([]);
-      setListingMap({});
-      setProfileMap({});
+      if (!uid) {
+        setThreads([]);
+        setListingMap({});
+        setProfileMap({});
+        setLastMessageMap({});
+        setMemberRows([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: threadRows, error } = await supabase
+        .from("chat_threads")
+        .select("id,listing_id,seller_id,buyer_id,created_at")
+        .or(`seller_id.eq.${uid},buyer_id.eq.${uid}`)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setThreads([]);
+        setLoading(false);
+        return;
+      }
+
+      const rows = (threadRows ?? []) as ChatThreadRow[];
+      setThreads(rows);
+
+      const listingIds = Array.from(
+        new Set(rows.map((x) => x.listing_id).filter(Boolean))
+      ) as string[];
+
+      const otherUserIds = Array.from(
+        new Set(
+          rows
+            .map((x) => (x.seller_id === uid ? x.buyer_id : x.seller_id))
+            .filter(Boolean)
+        )
+      ) as string[];
+
+      const threadIds = rows.map((x) => x.id);
+
+      const [listingsRes, profilesRes, membersRes, messagesRes] = await Promise.all([
+        listingIds.length
+          ? supabase.from("listings").select("id,title,image_urls").in("id", listingIds)
+          : Promise.resolve({ data: [] as any[] }),
+        otherUserIds.length
+          ? supabase
+              .from("profiles")
+              .select("id,full_name,public_display_name")
+              .in("id", otherUserIds)
+          : Promise.resolve({ data: [] as any[] }),
+        threadIds.length
+          ? supabase
+              .from("chat_thread_members")
+              .select("thread_id,user_id,last_read_at")
+              .in("thread_id", threadIds)
+          : Promise.resolve({ data: [] as any[] }),
+        threadIds.length
+          ? supabase
+              .from("chat_messages")
+              .select("id,thread_id,sender_id,message,created_at")
+              .in("thread_id", threadIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const nextListingMap: Record<string, ListingRow> = {};
+      (listingsRes.data ?? []).forEach((item: any) => {
+        nextListingMap[item.id] = item;
+      });
+
+      const nextProfileMap: Record<string, ProfileRow> = {};
+      (profilesRes.data ?? []).forEach((item: any) => {
+        nextProfileMap[item.id] = item;
+      });
+
+      const nextLastMessageMap: Record<string, ChatMessagePreviewRow> = {};
+      (messagesRes.data ?? []).forEach((item: any) => {
+        if (!nextLastMessageMap[item.thread_id]) {
+          nextLastMessageMap[item.thread_id] = item;
+        }
+      });
+
+      setListingMap(nextListingMap);
+      setProfileMap(nextProfileMap);
+      setLastMessageMap(nextLastMessageMap);
+      setMemberRows((membersRes.data ?? []) as ChatThreadMemberRow[]);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: threadRows, error } = await supabase
-      .from("chat_threads")
-      .select("id,listing_id,seller_id,buyer_id,created_at")
-      .or(`seller_id.eq.${uid},buyer_id.eq.${uid}`)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setThreads([]);
-      setLoading(false);
-      return;
-    }
-
-    const rows = (threadRows ?? []) as ChatThreadRow[];
-    setThreads(rows);
-
-    const listingIds = Array.from(new Set(rows.map((x) => x.listing_id)));
-    const otherUserIds = Array.from(
-      new Set(rows.map((x) => (x.seller_id === uid ? x.buyer_id : x.seller_id)))
-    );
-
-    const [{ data: listings }, { data: profiles }] = await Promise.all([
-      listingIds.length
-        ? supabase.from("listings").select("id,title,image_urls").in("id", listingIds)
-        : Promise.resolve({ data: [] as any[] }),
-      otherUserIds.length
-        ? supabase
-            .from("profiles")
-            .select("id,full_name,public_display_name")
-            .in("id", otherUserIds)
-        : Promise.resolve({ data: [] as any[] }),
-    ]);
-
-    const nextListingMap: Record<string, ListingRow> = {};
-    (listings ?? []).forEach((item: any) => {
-      nextListingMap[item.id] = item;
-    });
-
-    const nextProfileMap: Record<string, ProfileRow> = {};
-    (profiles ?? []).forEach((item: any) => {
-      nextProfileMap[item.id] = item;
-    });
-
-    setListingMap(nextListingMap);
-    setProfileMap(nextProfileMap);
-    setLoading(false);
   }
 
   useEffect(() => {
     load();
   }, []);
 
+  useEffect(() => {
+    if (!userId || threads.length === 0) return;
+
+    const channel = supabase
+      .channel(`web-chat-list-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_messages",
+        },
+        async () => {
+          await load();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_thread_members",
+        },
+        async () => {
+          await load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, threads.length]);
+
   const enriched = useMemo(() => {
     return threads.map((thread) => {
-      const otherUserId =
-        thread.seller_id === userId ? thread.buyer_id : thread.seller_id;
+      const otherUserId = thread.seller_id === userId ? thread.buyer_id : thread.seller_id;
+      const otherProfile = otherUserId ? profileMap[otherUserId] : undefined;
+      const listing = thread.listing_id ? listingMap[thread.listing_id] : undefined;
+      const lastMessage = lastMessageMap[thread.id];
 
-      const otherProfile = profileMap[otherUserId];
-      const listing = listingMap[thread.listing_id];
+      const myMember = memberRows.find(
+        (row) => row.thread_id === thread.id && row.user_id === userId
+      );
+
+      const unreadCount = Object.values(lastMessageMap).filter((msg) => {
+        if (msg.thread_id !== thread.id) return false;
+        if (msg.sender_id === userId) return false;
+        if (!myMember?.last_read_at) return true;
+        return new Date(msg.created_at).getTime() > new Date(myMember.last_read_at).getTime();
+      }).length;
 
       return {
         ...thread,
         otherName:
-          otherProfile?.public_display_name ||
-          toPublicName(otherProfile?.full_name),
-        listingTitle: listing?.title ?? "Ismeretlen hirdetés",
+          otherProfile?.public_display_name || toPublicName(otherProfile?.full_name),
+        listingTitle: listing?.title ?? "Beszélgetés",
         listingImage: listing?.image_urls?.[0] ?? null,
+        lastMessageText: lastMessage?.message ?? "Még nincs üzenet",
+        lastMessageAt: lastMessage?.created_at ?? thread.created_at,
+        unreadCount,
+        hasUnread: unreadCount > 0,
       };
     });
-  }, [threads, userId, profileMap, listingMap]);
+  }, [threads, userId, profileMap, listingMap, lastMessageMap, memberRows]);
 
   if (!userId && !loading) {
     return (
@@ -164,7 +264,7 @@ export default function ChatListPage() {
             </p>
             <div className="mt-6 flex justify-center">
               <Button asChild className="rounded-full px-6">
-                <a href="/login">Belépés</a>
+                <Link href="/login">Belépés</Link>
               </Button>
             </div>
           </CardContent>
@@ -200,9 +300,9 @@ export default function ChatListPage() {
             </div>
 
             <div className="rounded-2xl bg-white/80 p-4">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Állapot</div>
-              <div className="mt-1 text-sm font-semibold text-slate-900">
-                {loading ? "Betöltés..." : "Aktív"}
+              <div className="text-xs uppercase tracking-wide text-slate-500">Olvasatlan</div>
+              <div className="mt-1 text-2xl font-black text-slate-900">
+                {loading ? "..." : enriched.filter((item) => item.hasUnread).length}
               </div>
             </div>
           </div>
@@ -230,10 +330,15 @@ export default function ChatListPage() {
           ) : (
             <div className="space-y-3">
               {enriched.map((thread) => (
-                <a
+                <Link
                   key={thread.id}
                   href={`/chat/${thread.id}`}
-                  className="group flex items-center gap-4 rounded-[1.5rem] border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:p-4"
+                  className={[
+                    "group flex items-center gap-4 rounded-[1.5rem] border p-3 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:p-4",
+                    thread.hasUnread
+                      ? "border-indigo-200 bg-indigo-50/60"
+                      : "border-slate-200 bg-white",
+                  ].join(" ")}
                 >
                   {thread.listingImage ? (
                     <img
@@ -248,8 +353,18 @@ export default function ChatListPage() {
                   )}
 
                   <div className="min-w-0 flex-1">
-                    <div className="line-clamp-2 text-base font-semibold text-slate-900 sm:text-lg">
-                      {thread.listingTitle}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 text-base font-semibold text-slate-900 sm:text-lg">
+                          {thread.listingTitle}
+                        </div>
+                      </div>
+
+                      {thread.unreadCount > 0 ? (
+                        <div className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-red-500 px-2 py-1 text-[11px] font-bold text-white">
+                          {thread.unreadCount > 99 ? "99+" : thread.unreadCount}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
@@ -260,8 +375,12 @@ export default function ChatListPage() {
 
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1">
                         <Clock3 className="h-4 w-4" />
-                        {formatDate(thread.created_at)}
+                        {formatDate(thread.lastMessageAt)}
                       </span>
+                    </div>
+
+                    <div className="mt-3 line-clamp-1 text-sm text-slate-500">
+                      {thread.lastMessageText}
                     </div>
 
                     <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-indigo-600">
@@ -270,7 +389,7 @@ export default function ChatListPage() {
                   </div>
 
                   <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:text-slate-700" />
-                </a>
+                </Link>
               ))}
             </div>
           )}
