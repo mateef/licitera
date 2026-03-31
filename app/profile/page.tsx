@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,13 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
+  BadgeCheck,
+  ExternalLink,
+  Phone,
+  Sparkles,
   Star,
   UserRound,
-  Phone,
-  Crown,
   Wallet,
-  CheckCircle2,
-  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 type ProfileRow = {
@@ -52,63 +54,12 @@ type ReviewRow = {
 };
 
 type SubscriptionTier = "free" | "standard" | "pro";
-type SubscriptionSource = "free" | "stripe" | "app_store" | "play_store";
 
-type BillingEntryRow = {
-  id: string;
-  entry_type: string;
-  amount: number;
-  description: string;
-  created_at: string;
+const SUBSCRIPTION_LABELS: Record<SubscriptionTier, string> = {
+  free: "Ingyenes",
+  standard: "Standard",
+  pro: "Pro",
 };
-
-const SUBSCRIPTION_PLANS: {
-  key: SubscriptionTier;
-  name: string;
-  priceLabel: string;
-  description: string;
-  badge?: string;
-  features: string[];
-}[] = [
-  {
-    key: "free",
-    name: "Ingyenes",
-    priceLabel: "0 Ft / hó",
-    description:
-      "Kezdő és alkalmi eladóknak. Nincs havi díj, de sikeres eladásnál rendszerhasználati díj kerül felszámításra.",
-    features: [
-      "2,5% rendszerhasználati díj eladott tételenként",
-      "Maximum 2000 Ft aukciónként",
-      "Korlátlan böngészés és licitálás",
-    ],
-  },
-  {
-    key: "standard",
-    name: "Standard",
-    priceLabel: "1490 Ft / hó",
-    badge: "Ajánlott",
-    description:
-      "Gyakori eladóknak. Havi 10 aukcióig nincs tranzakciós díj, utána az alapdíjazás érvényes.",
-    features: [
-      "Havi 10 aukcióig nincs tranzakciós díj",
-      "Stabil havi költségtervezés",
-      "Minden alapfunkció elérhető",
-    ],
-  },
-  {
-    key: "pro",
-    name: "Pro",
-    priceLabel: "2990 Ft / hó",
-    badge: "Kiemelt",
-    description:
-      "Aktív eladóknak. Automatikus kiemelés és havi 20 aukcióig nincs extra tranzakciós költség.",
-    features: [
-      "Automatikus kiemelés a többi hirdetéssel szemben",
-      "Havi 20 aukcióig nincs tranzakciós díj",
-      "Nagyobb láthatóság és több licit esély",
-    ],
-  },
-];
 
 export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -128,30 +79,21 @@ export default function ProfilePage() {
 
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
   const [subscriptionStatus, setSubscriptionStatus] = useState("active");
-  const [changingPlan, setChangingPlan] = useState<SubscriptionTier | null>(null);
-  const [subscriptionSource, setSubscriptionSource] = useState<SubscriptionSource>("free");
 
   const [balanceAmount, setBalanceAmount] = useState(0);
   const [currentMonthFeeTotal, setCurrentMonthFeeTotal] = useState(0);
-  const [currentMonthSuccessfulSales, setCurrentMonthSuccessfulSales] = useState(0);
-  const [recentBillingEntries, setRecentBillingEntries] = useState<BillingEntryRow[]>([]);
+  const [monthlyFreeQuota, setMonthlyFreeQuota] = useState(0);
+  const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
+  const [usedSuccessfulSales, setUsedSuccessfulSales] = useState(0);
 
   const [pendingReviews, setPendingReviews] = useState<ReviewCandidate[]>([]);
   const [myReviews, setMyReviews] = useState<ReviewRow[]>([]);
   const [receivedReviews, setReceivedReviews] = useState<ReviewRow[]>([]);
   const [reviewerNames, setReviewerNames] = useState<Record<string, string>>({});
   const [otherPartyNames, setOtherPartyNames] = useState<Record<string, string>>({});
-  const [topupLoading, setTopupLoading] = useState(false);
 
   const [reviewRatings, setReviewRatings] = useState<Record<string, string>>({});
   const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
-
-  const [monthlyFreeQuota, setMonthlyFreeQuota] = useState(0);
-  const [remainingFreeQuota, setRemainingFreeQuota] = useState(0);
-  const [usedSuccessfulSales, setUsedSuccessfulSales] = useState(0);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
-  const [nextBillingDate, setNextBillingDate] = useState<string>("");
-  const [stripeCustomerPortalUrlLoading, setStripeCustomerPortalUrlLoading] = useState(false);
 
   function toPublicName(fullNameValue: string | null | undefined) {
     if (!fullNameValue) return "Ismeretlen felhasználó";
@@ -159,17 +101,6 @@ export default function ProfilePage() {
     if (parts.length === 0) return "Ismeretlen felhasználó";
     if (parts.length === 1) return parts[0];
     return `${parts[parts.length - 1]} ${parts[0].charAt(0).toUpperCase()}.`;
-  }
-
-  function formatDisplayDate(value: string | null | undefined) {
-    if (!value) return "";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("hu-HU", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
   }
 
   function isLikelyHungarianPhone(value: string) {
@@ -181,39 +112,13 @@ export default function ProfilePage() {
     return /^\+36\d{9}$/.test(raw) || /^06\d{9}$/.test(raw) || /^36\d{9}$/.test(raw);
   }
 
-  async function handleBalanceTopup() {
-    if (topupLoading) return;
-
-    setTopupLoading(true);
-
-    try {
-      toast.info(
-        "Az online egyenlegrendezés hamarosan elérhető lesz. A következő lépésben Stripe fizetést kötünk rá."
-      );
-    } finally {
-      setTopupLoading(false);
-    }
-  }
-
   function formatHufAmount(value: number | null | undefined) {
     if (value === null || value === undefined) return "-";
     return new Intl.NumberFormat("hu-HU").format(value) + " Ft";
   }
 
-  async function loadProfile() {
-    setLoading(true);
-    setMsg("");
-
+  async function loadProfile(uid: string) {
     const { data: sessionData } = await supabase.auth.getSession();
-    const uid = sessionData.session?.user?.id ?? null;
-
-    setUserId(uid);
-
-    if (!uid) {
-      setMsg("A profil megtekintéséhez előbb jelentkezz be.");
-      setLoading(false);
-      return;
-    }
 
     const { data, error } = await supabase
       .from("profiles")
@@ -225,7 +130,6 @@ export default function ProfilePage() {
 
     if (error) {
       setMsg(error.message);
-      setLoading(false);
       return;
     }
 
@@ -237,8 +141,43 @@ export default function ProfilePage() {
     setPhoneVerified(!!profile?.phone_verified);
     setSubscriptionTier((profile?.subscription_tier as SubscriptionTier | null) ?? "free");
     setSubscriptionStatus(profile?.subscription_status ?? "active");
+  }
 
-    setLoading(false);
+  async function loadBillingSummary(uid: string) {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [balanceRow, monthFees, quotaRow] = await Promise.all([
+      supabase
+        .from("billing_user_balances")
+        .select("balance_amount")
+        .eq("user_id", uid)
+        .maybeSingle(),
+      supabase
+        .from("billing_fee_events")
+        .select("fee_amount")
+        .eq("seller_user_id", uid)
+        .gte("created_at", monthStart.toISOString()),
+      supabase
+        .from("billing_monthly_quota_usage")
+        .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
+        .eq("user_id", uid)
+        .maybeSingle(),
+    ]);
+
+    setBalanceAmount(Number((balanceRow.data as any)?.balance_amount ?? 0));
+
+    const totalMonthFee =
+      (monthFees.data ?? []).reduce(
+        (sum: number, row: any) => sum + Number(row?.fee_amount ?? 0),
+        0
+      ) || 0;
+
+    setCurrentMonthFeeTotal(totalMonthFee);
+    setMonthlyFreeQuota(Number((quotaRow.data as any)?.monthly_free_quota ?? 0));
+    setRemainingFreeQuota(Number((quotaRow.data as any)?.remaining_free_quota ?? 0));
+    setUsedSuccessfulSales(Number((quotaRow.data as any)?.used_successful_sales ?? 0));
   }
 
   async function loadPendingReviews(uid: string) {
@@ -330,57 +269,6 @@ export default function ProfilePage() {
     setReceivedReviews(receivedRows);
   }
 
-  async function loadBillingData(uid: string) {
-    const { data: balanceRow } = await supabase
-      .from("billing_user_balances")
-      .select("balance_amount")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    setBalanceAmount((balanceRow as any)?.balance_amount ?? 0);
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-
-    const { data: monthFees } = await supabase
-      .from("billing_fee_events")
-      .select("fee_amount")
-      .eq("seller_user_id", uid)
-      .gte("created_at", monthStart.toISOString());
-
-    const totalMonthFee =
-      (monthFees ?? []).reduce((sum: number, row: any) => sum + (row.fee_amount ?? 0), 0) ?? 0;
-
-    setCurrentMonthFeeTotal(totalMonthFee);
-
-    const { count } = await supabase
-      .from("billing_fee_events")
-      .select("*", { count: "exact", head: true })
-      .eq("seller_user_id", uid)
-      .gte("created_at", monthStart.toISOString());
-
-    setCurrentMonthSuccessfulSales(count ?? 0);
-
-    const { data: ledgerRows } = await supabase
-      .from("billing_ledger")
-      .select("id,entry_type,amount,description,created_at")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(8);
-
-    const { data: quotaRow } = await supabase
-      .from("billing_monthly_quota_usage")
-      .select("monthly_free_quota, remaining_free_quota, used_successful_sales")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    setMonthlyFreeQuota((quotaRow as any)?.monthly_free_quota ?? 0);
-    setRemainingFreeQuota((quotaRow as any)?.remaining_free_quota ?? 0);
-    setUsedSuccessfulSales((quotaRow as any)?.used_successful_sales ?? 0);
-    setRecentBillingEntries((ledgerRows ?? []) as BillingEntryRow[]);
-  }
-
   async function loadAllProfileData() {
     setLoading(true);
     setMsg("");
@@ -396,11 +284,13 @@ export default function ProfilePage() {
       return;
     }
 
-    await loadProfile();
-    await loadPendingReviews(uid);
-    await loadReviews(uid);
-    await loadBillingData(uid);
-    await loadStripeSubscriptionStatus(uid);
+    await Promise.all([
+      loadProfile(uid),
+      loadBillingSummary(uid),
+      loadPendingReviews(uid),
+      loadReviews(uid),
+    ]);
+
     setLoading(false);
   }
 
@@ -475,54 +365,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function loadStripeSubscriptionStatus(uid: string) {
-    if (!uid) return;
-
-    setSubscriptionLoading(true);
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        return;
-      }
-
-      const res = await fetch("/api/subscription-status", {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        return;
-      }
-
-      if (data?.subscriptionTier) {
-        setSubscriptionTier(data.subscriptionTier);
-      }
-
-      if (data?.subscriptionStatus) {
-        setSubscriptionStatus(data.subscriptionStatus);
-      }
-
-      if (data?.subscriptionSource) {
-        setSubscriptionSource(data.subscriptionSource as SubscriptionSource);
-      }
-
-      setNextBillingDate(data?.currentPeriodEnd ?? "");
-    } finally {
-      setSubscriptionLoading(false);
-    }
-  }
-
   async function sendVerificationSms() {
     setMsg("");
 
@@ -544,9 +386,7 @@ export default function ProfilePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          phone: phone.trim(),
-        }),
+        body: JSON.stringify({ phone: phone.trim() }),
       });
 
       const data = await res.json().catch(() => null);
@@ -645,103 +485,6 @@ export default function ProfilePage() {
     await loadReviews(userId);
   }
 
-  async function changeSubscription(tier: SubscriptionTier) {
-    if (!userId) return;
-
-    if (tier === "free") {
-      toast.info("Az ingyenes csomagra váltást a lemondással kezeljük.");
-      return;
-    }
-
-    if (subscriptionSource === "app_store" || subscriptionSource === "play_store") {
-      toast.info(
-        "Ezt az előfizetést mobilon vásároltad meg, ezért a módosítás az App Store / Google Play előfizetések között érhető el."
-      );
-      return;
-    }
-
-    setChangingPlan(tier);
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
-        return;
-      }
-
-      const res = await fetch("/api/stripe/create-subscription-checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ tier }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        toast.error(data?.error || "Nem sikerült elindítani az előfizetést.");
-        return;
-      }
-
-      if (!data?.url) {
-        toast.error("Hiányzik a Stripe checkout URL.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } finally {
-      setChangingPlan(null);
-    }
-  }
-
-  async function openCustomerPortal() {
-    setStripeCustomerPortalUrlLoading(true);
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        toast.error("Lejárt a munkamenet. Jelentkezz be újra.");
-        return;
-      }
-
-      const res = await fetch("/api/stripe/customer-portal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        toast.error(data?.error || "Nem sikerült megnyitni az előfizetéskezelőt.");
-        return;
-      }
-
-      if (!data?.url) {
-        toast.error("Hiányzik a Customer Portal URL.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } finally {
-      setStripeCustomerPortalUrlLoading(false);
-    }
-  }
-
   useEffect(() => {
     loadAllProfileData();
 
@@ -754,28 +497,15 @@ export default function ProfilePage() {
 
   const generatedPublicName = toPublicName(fullName);
 
-  const currentPlan = useMemo(() => {
-    return SUBSCRIPTION_PLANS.find((plan) => plan.key === subscriptionTier) ?? SUBSCRIPTION_PLANS[0];
+  const planLabel = useMemo(() => {
+    return SUBSCRIPTION_LABELS[subscriptionTier] ?? "Ingyenes";
   }, [subscriptionTier]);
-
-  const currentMonthlyFee =
-    subscriptionTier === "standard" ? 1490 : subscriptionTier === "pro" ? 2990 : 0;
-
-  const transactionRule =
-    subscriptionTier === "free"
-      ? "2,5% / eladott tétel, maximum 2000 Ft aukciónként"
-      : subscriptionTier === "standard"
-      ? "0 Ft havi 10 aukcióig, utána alapdíj"
-      : "0 Ft havi 20 aukcióig, utána alapdíj";
-
-  const hasPaidSubscription =
-    subscriptionTier === "standard" || subscriptionTier === "pro";
 
   if (loading) {
     return (
       <div className="mx-auto max-w-6xl space-y-4">
         <div className="h-10 w-48 rounded bg-muted" />
-        <div className="h-64 rounded bg-muted" />
+        <div className="h-72 rounded-[2rem] bg-muted" />
       </div>
     );
   }
@@ -783,16 +513,14 @@ export default function ProfilePage() {
   if (!userId) {
     return (
       <div className="mx-auto max-w-2xl">
-        <Card>
-          <CardHeader>
-            <CardTitle>Profil</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+        <Card className="rounded-[2rem]">
+          <CardContent className="space-y-4 p-6">
+            <div className="text-2xl font-bold text-slate-900">Profil</div>
+            <p className="text-sm text-slate-500">
               A profil megtekintéséhez előbb jelentkezz be.
             </p>
             <Button asChild>
-              <a href="/login">Belépés / Regisztráció</a>
+              <Link href="/login">Belépés / Regisztráció</Link>
             </Button>
           </CardContent>
         </Card>
@@ -801,16 +529,54 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Profilom</h1>
-        <p className="text-sm text-muted-foreground">
-          Itt tudod kezelni a fiókod adatait, előfizetésedet és értékeléseidet.
-        </p>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(219,234,254,0.88),rgba(255,255,255,0.97),rgba(245,208,254,0.72))] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="rounded-full px-3 py-1">
+                Saját profil
+              </Badge>
+
+              {phoneVerified ? (
+                <Badge className="rounded-full bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-600">
+                  <BadgeCheck className="mr-1 h-3.5 w-3.5" />
+                  Telefonszám hitelesítve
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="rounded-full px-3 py-1">
+                  Telefonszám nincs hitelesítve
+                </Badge>
+              )}
+            </div>
+
+            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+              Profilom
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
+              Itt tudod kezelni a fiókadataidat és az értékeléseidet. Az egyenleg, előfizetés és
+              számlázás külön a Billing oldalon érhető el.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild className="rounded-full">
+              <Link href={`/profile/${userId}`}>
+                Nyilvános profil
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+
+            <Button asChild className="rounded-full">
+              <Link href="/my-listings">Saját aukciók</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="rounded-[1.75rem] border-slate-200/80 lg:col-span-2">
           <CardHeader>
             <CardTitle>Fiókadatok</CardTitle>
           </CardHeader>
@@ -829,8 +595,8 @@ export default function ProfilePage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Nyilvánosan megjelenő név</label>
-                <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">
-                  {generatedPublicName || "Automatikusan generálva a nevedből"}
+                <div className="flex h-11 items-center rounded-xl border bg-slate-50 px-3 text-sm text-slate-600">
+                  {generatedPublicName || "Automatikusan generálva"}
                 </div>
               </div>
             </div>
@@ -857,24 +623,24 @@ export default function ProfilePage() {
               />
             </div>
 
-            <div className="rounded-xl border bg-background/60 p-4 text-sm">
-              <div className="flex items-center gap-2 font-medium">
+            <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="flex items-center gap-2 font-medium text-slate-900">
                 <Phone className="h-4 w-4" />
                 Telefonszám hitelesítése
               </div>
 
-              <div className="mt-2 text-muted-foreground">
+              <div className="mt-2 text-sm text-slate-600">
                 Állapot:{" "}
                 {phoneVerified ? (
-                  <span className="font-medium text-green-600">Hitelesítve</span>
+                  <span className="font-medium text-emerald-600">Hitelesítve</span>
                 ) : (
                   <span className="font-medium text-amber-600">Nincs hitelesítve</span>
                 )}
               </div>
 
-              {!phoneVerified && (
+              {!phoneVerified ? (
                 <>
-                  <div className="mt-2 text-xs text-muted-foreground">
+                  <div className="mt-2 text-xs text-slate-500">
                     A licitáláshoz és a hirdetésfeladáshoz hitelesített telefonszám szükséges.
                   </div>
 
@@ -907,373 +673,113 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </>
-              )}
+              ) : null}
             </div>
 
             <Button className="w-full sm:w-auto" onClick={saveProfile} disabled={saving}>
               {saving ? "Mentés..." : "Mentés"}
             </Button>
 
-            {msg && (
-              <div className="rounded-xl border bg-background/60 p-3 text-sm text-muted-foreground">
-                {msg}
-              </div>
-            )}
+            {msg ? (
+              <div className="rounded-xl border bg-white p-3 text-sm text-slate-600">{msg}</div>
+            ) : null}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-[1.75rem] border-slate-200/80">
           <CardHeader>
-            <CardTitle>Aktív csomag és díjak</CardTitle>
+            <CardTitle>Egyenleg és előfizetés</CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-4">
             <div className="rounded-2xl border bg-slate-50 p-4">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Jelenlegi csomag</div>
-              <div className="mt-1 flex items-center gap-2 text-lg font-bold text-slate-900">
-                <Crown className="h-5 w-5" />
-                {currentPlan.name}
-              </div>
-              <div className="mt-1 text-sm text-slate-600">{currentPlan.priceLabel}</div>
-              <div className="mt-3">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Aktív csomag</div>
+              <div className="mt-2 text-lg font-bold text-slate-900">{planLabel}</div>
+              <div className="mt-2">
                 <Badge variant="secondary">
                   {subscriptionStatus === "active" ? "Aktív" : subscriptionStatus}
                 </Badge>
               </div>
-
-              {subscriptionTier !== "free" && nextBillingDate && (
-                <div className="mt-3 text-sm text-slate-600">
-                  Következő terhelés:{" "}
-                  <span className="font-medium text-slate-900">
-                    {formatDisplayDate(nextBillingDate)}
-                  </span>
-                </div>
-              )}
-
-              {subscriptionTier !== "free" && subscriptionSource === "stripe" && (
-                <div className="mt-2 text-xs text-slate-500">
-                  Az előfizetés számlája automatikusan emailben kerül kiküldésre.
-                </div>
-              )}
-
-              {subscriptionTier !== "free" &&
-                (subscriptionSource === "app_store" || subscriptionSource === "play_store") && (
-                  <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                    Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App Store /
-                    Google Play előfizetések között érhető el.
-                  </div>
-                )}
             </div>
 
             <div className="rounded-2xl border bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 <Wallet className="h-4 w-4" />
-                Egyenleg és díjkimutatás
+                Billing összefoglaló
               </div>
 
               <div className="mt-4 space-y-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Havi előfizetési díj</span>
-                  <span className="font-semibold">{formatHufAmount(currentMonthlyFee)}</span>
-                </div>
-
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-muted-foreground">Tranzakciós szabály</span>
-                  <span className="max-w-[180px] text-right font-semibold">{transactionRule}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Sikeres eladások ebben a hónapban</span>
-                  <span className="font-semibold">{usedSuccessfulSales} db</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Havi díjmentes kvóta</span>
-                  <span className="font-semibold">{monthlyFreeQuota} db</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Hátralévő díjmentes kvóta</span>
-                  <span className="font-semibold">{remainingFreeQuota} db</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Ebben a hónapban felszámított díj</span>
-                  <span className="font-semibold">{formatHufAmount(currentMonthFeeTotal)}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Jelenlegi egyenleg</span>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-500">Jelenlegi egyenleg</span>
                   <span
-                    className={`font-semibold ${
-                      balanceAmount < 0 ? "text-red-600" : "text-green-600"
-                    }`}
+                    className={
+                      balanceAmount < 0
+                        ? "font-semibold text-red-600"
+                        : "font-semibold text-emerald-600"
+                    }
                   >
                     {formatHufAmount(balanceAmount)}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Díjplafon</span>
-                  <span className="font-semibold">2 000 Ft / aukció</span>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-500">Ebben a hónapban felszámított díj</span>
+                  <span className="font-semibold text-slate-900">
+                    {formatHufAmount(currentMonthFeeTotal)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-500">Sikeres eladások</span>
+                  <span className="font-semibold text-slate-900">{usedSuccessfulSales} db</span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-500">Havi díjmentes kvóta</span>
+                  <span className="font-semibold text-slate-900">{monthlyFreeQuota} db</span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-500">Hátralévő kvóta</span>
+                  <span className="font-semibold text-slate-900">{remainingFreeQuota} db</span>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-white p-4">
-              <div className="mb-3 text-sm font-medium text-slate-900">Egyenleg rendezése</div>
+            {balanceAmount < 0 ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                Az egyenleged negatív. Rendezd a Billing oldalon, mert ez korlátozhatja az új
+                aukció feladását.
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                Az egyenleged rendben van.
+              </div>
+            )}
 
-              {balanceAmount < 0 ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
-                    <div className="font-medium text-red-700">
-                      Az egyenleged negatív: {formatHufAmount(balanceAmount)}
-                    </div>
-                    <div className="mt-1 text-red-600">
-                      Amíg ezt nem rendezed, új aukciót nem tudsz indítani.
-                    </div>
-                  </div>
+            <Button asChild className="w-full rounded-xl">
+              <Link href="/billing">
+                Egyenleg és előfizetés kezelése
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
 
-                  <Button
-                    className="w-full"
-                    onClick={handleBalanceTopup}
-                    disabled={topupLoading}
-                  >
-                    {topupLoading ? "Betöltés..." : "Rendezem az egyenleget"}
-                  </Button>
-
-                  <div className="text-xs text-muted-foreground">
-                    Hamarosan online fizetéssel is rendezhető lesz az egyenleged.
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm">
-                    <div className="font-medium text-green-700">Az egyenleged rendben van.</div>
-                    <div className="mt-1 text-green-600">Jelenleg nincs szükség rendezésre.</div>
-                  </div>
-
-                  <Button variant="outline" className="w-full" disabled>
-                    Egyenleg rendezése
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl border bg-white p-4">
-              <div className="mb-3 text-sm font-medium text-slate-900">Legutóbbi díjbejegyzések</div>
-
-              {recentBillingEntries.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Még nincs díj- vagy egyenlegmozgás.</div>
-              ) : (
-                <div className="space-y-3">
-                  {recentBillingEntries.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-medium text-slate-900">{entry.description}</div>
-                        <div
-                          className={
-                            entry.amount < 0
-                              ? "font-semibold text-red-600"
-                              : "font-semibold text-green-600"
-                          }
-                        >
-                          {entry.amount > 0 ? "+" : ""}
-                          {formatHufAmount(entry.amount)}
-                        </div>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {new Date(entry.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="text-xs text-slate-500">
+              A Stripe-os fizetés, előfizetés-kezelés, lemondás és egyenlegrendezés a Billing
+              oldalon érhető el.
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Előfizetések</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 xl:grid-cols-3">
-            {SUBSCRIPTION_PLANS.map((plan) => {
-              const isCurrent = plan.key === subscriptionTier;
-
-              return (
-                <div
-                  key={plan.key}
-                  className={`rounded-[1.5rem] border p-5 transition ${
-                    isCurrent ? "border-primary bg-primary/5 shadow-sm" : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-lg font-semibold text-slate-900">{plan.name}</div>
-                      <div className="mt-1 text-sm text-slate-600">{plan.priceLabel}</div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2">
-                      {plan.badge ? <Badge>{plan.badge}</Badge> : null}
-                      {isCurrent ? <Badge variant="secondary">Jelenlegi</Badge> : null}
-                    </div>
-                  </div>
-
-                  <p className="mt-4 text-sm leading-6 text-slate-600">{plan.description}</p>
-
-                  <div className="mt-4 space-y-2">
-                    {plan.features.map((item) => (
-                      <div key={item} className="flex items-start gap-2 text-sm">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-600" />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-5 space-y-2">
-                    {isCurrent ? (
-                      <>
-                        <Button className="w-full" variant="secondary" disabled>
-                          {subscriptionLoading ? "Betöltés..." : "Aktív csomag"}
-                        </Button>
-
-                        {plan.key !== "free" && subscriptionSource === "stripe" && (
-                          <Button
-                            className="w-full"
-                            variant="outline"
-                            onClick={openCustomerPortal}
-                            disabled={stripeCustomerPortalUrlLoading}
-                          >
-                            {stripeCustomerPortalUrlLoading
-                              ? "Betöltés..."
-                              : "Előfizetés kezelése / lemondás"}
-                          </Button>
-                        )}
-
-                        {plan.key !== "free" &&
-                          (subscriptionSource === "app_store" ||
-                            subscriptionSource === "play_store") && (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                              Ezt az előfizetést mobilon vásároltad meg, ezért a kezelése az App
-                              Store / Google Play előfizetések között érhető el.
-                            </div>
-                          )}
-                      </>
-                    ) : (
-                      <Button
-                        className="w-full"
-                        onClick={() => changeSubscription(plan.key)}
-                        disabled={
-                          changingPlan !== null ||
-                          subscriptionSource === "app_store" ||
-                          subscriptionSource === "play_store"
-                        }
-                      >
-                        {changingPlan === plan.key
-                          ? "Átirányítás..."
-                          : plan.key === "free"
-                          ? "Ingyenes csomag"
-                          : "Csomag kiválasztása"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="overflow-hidden rounded-[1.5rem] border">
-            <div className="grid grid-cols-4 border-b bg-slate-50 text-sm font-medium">
-              <div className="p-4">Funkció</div>
-              <div className="p-4 text-center">Ingyenes</div>
-              <div className="p-4 text-center">Standard</div>
-              <div className="p-4 text-center">Pro</div>
-            </div>
-
-            {[
-              {
-                label: "Licitálás és vásárlás",
-                free: "Igen",
-                standard: "Igen",
-                pro: "Igen",
-              },
-              {
-                label: "Hirdetés feladása",
-                free: "Igen",
-                standard: "Igen",
-                pro: "Igen",
-              },
-              {
-                label: "Lejárt, licit nélküli hirdetések 2x-i megújítása",
-                free: "Igen",
-                standard: "Igen",
-                pro: "Igen",
-              },
-              {
-                label: "Rendszerhasználati díj",
-                free: "2,5%, max. 2000 Ft",
-                standard: "0 Ft 10 aukcióig / hó",
-                pro: "0 Ft 20 aukcióig / hó",
-              },
-              {
-                label: "Automatikus kiemelés",
-                free: "Nem",
-                standard: "Nem",
-                pro: "Igen",
-              },
-              {
-                label: "Havi díj",
-                free: "0 Ft",
-                standard: "1490 Ft",
-                pro: "2990 Ft",
-              },
-            ].map((row) => (
-              <div key={row.label} className="grid grid-cols-4 border-b last:border-b-0 text-sm">
-                <div className="p-4 font-medium text-slate-900">{row.label}</div>
-                <div className="p-4 text-center text-slate-600">{row.free}</div>
-                <div className="p-4 text-center text-slate-600">{row.standard}</div>
-                <div className="p-4 text-center text-slate-600">{row.pro}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">
-            <div className="mb-2 flex items-center gap-2 font-medium text-slate-900">
-              <Sparkles className="h-4 w-4" />
-              Fontos
-            </div>
-
-            {subscriptionSource === "stripe" ? (
-              <p>
-                Az előfizetések Stripe-on keresztül kerülnek terhelésre. A következő terhelés dátuma
-                a profilban jelenik meg, a lemondás és a fizetési mód kezelése pedig a Stripe
-                ügyfélportálon érhető el. A számla automatikusan emailben kerül kiküldésre.
-              </p>
-            ) : subscriptionSource === "app_store" || subscriptionSource === "play_store" ? (
-              <p>
-                Ezt az előfizetést mobilon vásároltad meg, ezért a módosítás és a lemondás az App
-                Store / Google Play előfizetések között érhető el. A webes Stripe ügyfélportál ehhez
-                a csomaghoz nem használható.
-              </p>
-            ) : (
-              <p>
-                Jelenleg nincs aktív fizetős előfizetésed. Az egyenleged csak 0 vagy negatív lehet,
-                pozitív összeget a rendszer nem tárol.
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
+      <Card className="rounded-[1.75rem] border-slate-200/80">
         <CardHeader>
           <CardTitle>Leadható értékelések</CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-4">
           {pendingReviews.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
               Jelenleg nincs leadható értékelésed.
             </div>
           ) : (
@@ -1285,7 +791,7 @@ export default function ProfilePage() {
                   : "Ismeretlen felhasználó";
 
                 return (
-                  <div key={row.id} className="rounded-[1.5rem] border p-4 shadow-sm">
+                  <div key={row.id} className="rounded-[1.5rem] border border-slate-200 p-4 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row">
                       {row.image_urls?.[0] ? (
                         <img
@@ -1294,7 +800,7 @@ export default function ProfilePage() {
                           className="h-28 w-full rounded-2xl object-cover sm:w-28"
                         />
                       ) : (
-                        <div className="h-28 w-full rounded-2xl bg-muted sm:w-28" />
+                        <div className="h-28 w-full rounded-2xl bg-slate-100 sm:w-28" />
                       )}
 
                       <div className="min-w-0 flex-1 space-y-2">
@@ -1306,11 +812,11 @@ export default function ProfilePage() {
                           </Badge>
                         </div>
 
-                        <div className="text-sm text-muted-foreground">
-                          Lezárva: {row.closed_at ? new Date(row.closed_at).toLocaleString() : "-"}
+                        <div className="text-sm text-slate-500">
+                          Lezárva: {row.closed_at ? new Date(row.closed_at).toLocaleString("hu-HU") : "-"}
                         </div>
 
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-sm text-slate-500">
                           Végső ár: {formatHufAmount(row.final_price)}
                         </div>
                       </div>
@@ -1355,18 +861,21 @@ export default function ProfilePage() {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-[1.75rem] border-slate-200/80">
           <CardHeader>
             <CardTitle>Kapott értékeléseim</CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-4">
             {receivedReviews.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Még nincs kapott értékelésed.</div>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+                Még nincs kapott értékelésed.
+              </div>
             ) : (
               receivedReviews.map((row) => (
-                <div key={row.id} className="rounded-2xl border p-4">
+                <div key={row.id} className="rounded-2xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold">
+                    <div className="font-semibold text-slate-900">
                       {reviewerNames[row.reviewer_user_id] || "Ismeretlen felhasználó"}
                     </div>
                     <Badge className="inline-flex items-center gap-1">
@@ -1375,40 +884,43 @@ export default function ProfilePage() {
                     </Badge>
                   </div>
 
-                  <div className="mt-2 text-sm text-muted-foreground">
+                  <div className="mt-2 text-sm text-slate-500">
                     Hirdetés: {row.listings?.[0]?.title ?? "Ismeretlen hirdetés"}
                   </div>
 
-                  {row.comment ? <div className="mt-2 text-sm">{row.comment}</div> : null}
+                  {row.comment ? <div className="mt-3 text-sm text-slate-700">{row.comment}</div> : null}
                 </div>
               ))
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-[1.75rem] border-slate-200/80">
           <CardHeader>
             <CardTitle>Általam adott értékelések</CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-4">
             {myReviews.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Még nem adtál értékelést.</div>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+                Még nem adtál értékelést.
+              </div>
             ) : (
               myReviews.map((row) => (
-                <div key={row.id} className="rounded-2xl border p-4">
+                <div key={row.id} className="rounded-2xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold">Értékelésem</div>
+                    <div className="font-semibold text-slate-900">Értékelésem</div>
                     <Badge className="inline-flex items-center gap-1">
                       <Star className="h-3.5 w-3.5 fill-current" />
                       {row.rating}/5
                     </Badge>
                   </div>
 
-                  <div className="mt-2 text-sm text-muted-foreground">
+                  <div className="mt-2 text-sm text-slate-500">
                     Hirdetés: {row.listings?.[0]?.title ?? "Ismeretlen hirdetés"}
                   </div>
 
-                  {row.comment ? <div className="mt-2 text-sm">{row.comment}</div> : null}
+                  {row.comment ? <div className="mt-3 text-sm text-slate-700">{row.comment}</div> : null}
                 </div>
               ))
             )}

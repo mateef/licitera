@@ -76,7 +76,8 @@ type RatingSummaryRow = {
 };
 
 const settlementItems = settlements as SettlementItem[];
-const PAGE_SIZE = 24;
+const DEFAULT_PAGE_SIZE = 24;
+const PAGE_SIZE_OPTIONS = [12, 24, 48, 96] as const;
 
 const HOME_CATEGORIES = [
   { key: "Elektronika", label: "Elektronika", emoji: "📱" },
@@ -337,6 +338,7 @@ export default function ListingsPageClient() {
   const [cityInput, setCityInput] = useState("");
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
 
   const listingsReqIdRef = useRef(0);
 
@@ -414,7 +416,7 @@ export default function ListingsPageClient() {
     return buildDescendantIds(allCategories, finalCategoryId);
   }, [allCategories, finalCategoryId]);
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const selectedCategoryName =
     catsL3.find((c) => c.id === catL3)?.name ||
@@ -583,8 +585,8 @@ export default function ListingsPageClient() {
         return 0;
       });
 
-      const start = (page - 1) * PAGE_SIZE;
-      const end = start + PAGE_SIZE;
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
 
       setAllLoadedListings(formatted);
       setTotalCount(formatted.length);
@@ -599,14 +601,21 @@ export default function ListingsPageClient() {
       if (reqId !== listingsReqIdRef.current) return;
       setLoading(false);
     }
-  }, [q, county, city, minPrice, maxPrice, sort, selectedCategoryIds, page]);
+  }, [q, county, city, minPrice, maxPrice, sort, selectedCategoryIds, page, pageSize]);
 
   useEffect(() => {
-    setQ(searchParams.get("q") ?? "");
+  setQ(searchParams.get("q") ?? "");
 
-    const pageParam = Number(searchParams.get("page") ?? "1");
-    setPage(Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1);
-  }, [searchParams]);
+  const pageParam = Number(searchParams.get("page") ?? "1");
+  const perPageParam = Number(searchParams.get("perPage") ?? String(DEFAULT_PAGE_SIZE));
+
+  setPage(Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1);
+  setPageSize(
+    PAGE_SIZE_OPTIONS.includes(perPageParam as (typeof PAGE_SIZE_OPTIONS)[number])
+      ? perPageParam
+      : DEFAULT_PAGE_SIZE
+  );
+}, [searchParams]);
 
   useEffect(() => {
     loadCategories();
@@ -654,7 +663,12 @@ export default function ListingsPageClient() {
     if (!allCategories.length) return;
 
     const categoryParam = searchParams.get("category");
-    if (!categoryParam) return;
+    if (!categoryParam) {
+    setCatL1("");
+    setCatL2("");
+    setCatL3("");
+    return;
+  }
 
     const byId = allCategories.find((c) => c.id === categoryParam);
     if (byId) {
@@ -728,6 +742,9 @@ useEffect(() => {
     if (page > 1) params.set("page", String(page));
     else params.delete("page");
 
+    if (pageSize !== DEFAULT_PAGE_SIZE) params.set("perPage", String(pageSize));
+    else params.delete("perPage");
+
     const nextQuery = params.toString();
     const currentQuery = searchParams.toString();
 
@@ -737,7 +754,7 @@ useEffect(() => {
   }, 250);
 
   return () => clearTimeout(t);
-}, [q, page, finalCategoryId, router, searchParams]);
+}, [q, page, pageSize, finalCategoryId, router, searchParams]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -763,7 +780,7 @@ useEffect(() => {
   }
 
   const filterPanel = (
-    <div className="space-y-4">
+  <div className="space-y-4 pb-1">
       <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
         <SlidersHorizontal className="h-4 w-4" />
         Szűrők
@@ -887,7 +904,7 @@ useEffect(() => {
   return (
     <>
       <div className="space-y-8 pb-8">
-        <section className="relative overflow-hidden rounded-[2.25rem] bg-[linear-gradient(135deg,rgba(219,234,254,0.95),rgba(255,255,255,0.98),rgba(245,208,254,0.78))] px-5 py-6 sm:px-8 sm:py-8">
+        <section className="relative z-20 overflow-visible rounded-[2.25rem] bg-[linear-gradient(135deg,rgba(219,234,254,0.95),rgba(255,255,255,0.98),rgba(245,208,254,0.78))] px-5 py-6 sm:px-8 sm:py-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.95),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.6),transparent_35%)]" />
 
           <div className="relative space-y-6">
@@ -954,13 +971,13 @@ useEffect(() => {
                       onPress={() => setAllCategoriesOpen(true)}
                     />
                     <button
-                      type="button"
-                      onClick={() => setShowMobileFilters(true)}
-                      className="inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm xl:hidden"
-                    >
-                      <Filter className="h-4 w-4" />
-                      Szűrők
-                    </button>
+  type="button"
+  onClick={() => setShowMobileFilters(true)}
+  className="relative z-30 inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm xl:hidden"
+>
+  <Filter className="h-4 w-4" />
+  Szűrők
+</button>
                   </div>
                 </div>
 
@@ -1021,12 +1038,14 @@ useEffect(() => {
           </div>
         </section>
 
-        <div className="grid gap-8 xl:grid-cols-[290px_minmax(0,1fr)]">
-          <aside className="hidden xl:block xl:sticky xl:top-28 xl:self-start">{filterPanel}</aside>
+        <div className="grid gap-8 xl:items-start xl:grid-cols-[290px_minmax(0,1fr)]">
+  <aside className="hidden xl:block">
+    {filterPanel}
+  </aside>
 
-          <section className="space-y-5">
+  <section className="min-w-0 space-y-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex flex-wrap gap-2">
+              <div className="relative z-30 flex flex-wrap gap-2">
                 {q && (
                   <button
                     onClick={() => setQ("")}
@@ -1101,23 +1120,38 @@ useEffect(() => {
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="hidden items-center gap-2 text-sm text-slate-500 sm:inline-flex">
-                  <LayoutGrid className="h-4 w-4" />
-                  {allLoadedListings.length} aukció
-                </div>
+              <div className="flex flex-wrap items-center gap-3">
+  <div className="hidden items-center gap-2 text-sm text-slate-500 sm:inline-flex">
+    <LayoutGrid className="h-4 w-4" />
+    {allLoadedListings.length} aukció
+  </div>
 
-                <select
-                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none shadow-sm"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as any)}
-                >
-                  <option value="ending">Hamarosan lejár</option>
-                  <option value="new">Legújabb</option>
-                  <option value="price_desc">Legmagasabb ár</option>
-                  <option value="price_asc">Legalacsonyabb ár</option>
-                </select>
-              </div>
+  <select
+    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none shadow-sm"
+    value={pageSize}
+    onChange={(e) => {
+      setPageSize(Number(e.target.value));
+      setPage(1);
+    }}
+  >
+    {PAGE_SIZE_OPTIONS.map((size) => (
+      <option key={size} value={size}>
+        {size} / oldal
+      </option>
+    ))}
+  </select>
+
+  <select
+    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none shadow-sm"
+    value={sort}
+    onChange={(e) => setSort(e.target.value as any)}
+  >
+    <option value="ending">Hamarosan lejár</option>
+    <option value="new">Legújabb</option>
+    <option value="price_desc">Legmagasabb ár</option>
+    <option value="price_asc">Legalacsonyabb ár</option>
+  </select>
+</div>
             </div>
 
             {loadError ? (
@@ -1132,7 +1166,7 @@ useEffect(() => {
 
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 2xl:grid-cols-3">
               {loading ? (
-                Array.from({ length: PAGE_SIZE }).map((_, i) => (
+                Array.from({ length: pageSize }).map((_, i) => (
                   <div
                     key={i}
                     className="overflow-hidden rounded-[1.9rem] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
@@ -1165,8 +1199,8 @@ useEffect(() => {
                       Szűrők törlése
                     </Button>
                     <Button asChild>
-                      <a href="/create-listing">Eladok valamit</a>
-                    </Button>
+  <Link href="/create-listing">Eladok valamit</Link>
+</Button>
                   </div>
                 </div>
               ) : (
@@ -1187,7 +1221,7 @@ useEffect(() => {
                       }`}
                     >
                       <div className="relative">
-                        <a href={`/listing/${l.id}`} className="block overflow-hidden">
+                        <Link href={`/listing/${l.id}`} className="block overflow-hidden">
                           {l.image_urls?.[0] ? (
                             <img
                               src={l.image_urls[0]}
@@ -1199,7 +1233,7 @@ useEffect(() => {
                               Nincs kép
                             </div>
                           )}
-                        </a>
+                        </Link>
 
                         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent" />
 
@@ -1242,22 +1276,22 @@ useEffect(() => {
                             {timeLeft}
                           </div>
 
-                          <a
+                          <Link
                             href={`/listing/${l.id}`}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm backdrop-blur transition hover:bg-white"
                             aria-label="Megnyitás"
                           >
                             <ArrowUpRight className="h-4 w-4" />
-                          </a>
+                          </Link>
                         </div>
                       </div>
 
                       <div className="space-y-5 p-5">
                         <div className="space-y-3">
                           <h2 className="line-clamp-2 text-xl font-bold leading-7 text-slate-900">
-                            <a href={`/listing/${l.id}`} className="transition hover:text-primary">
+                            <Link href={`/listing/${l.id}`} className="transition hover:text-primary">
                               {l.title}
-                            </a>
+                            </Link>
                           </h2>
 
                           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -1338,9 +1372,9 @@ useEffect(() => {
                         )}
 
                         <div className="flex gap-3">
-                          <Button className="h-11 flex-1 rounded-2xl" asChild>
-                            <a href={`/listing/${l.id}`}>Megnyitás</a>
-                          </Button>
+                         <Button className="h-11 flex-1 rounded-2xl" asChild>
+  <Link href={`/listing/${l.id}`}>Megnyitás</Link>
+</Button>
 
                           <Button
                             variant="outline"
