@@ -25,6 +25,7 @@ export function middleware(req: NextRequest) {
   "/api/ai/category-suggest",
   "/api/ai/listing-suggest",
   "/delete-request",
+  "/support/report-error",
 ];
 
   const isPublic =
