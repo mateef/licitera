@@ -16,6 +16,28 @@ type SendPushToUserParams = {
   uniqueKey?: string | null;
 };
 
+type ExpoPushTicket = {
+  status: "ok" | "error";
+  id?: string;
+  message?: string;
+  details?: {
+    error?: string;
+    expoPushToken?: string;
+  };
+};
+
+function normalizeToken(value: unknown) {
+  const token = String(value ?? "").trim();
+  if (!token) return "";
+  if (
+    token.startsWith("ExponentPushToken[") ||
+    token.startsWith("ExpoPushToken[")
+  ) {
+    return token;
+  }
+  return "";
+}
+
 export async function sendPushToUser({
   userId,
   title,
@@ -31,10 +53,11 @@ export async function sendPushToUser({
       .from("notification_delivery_log")
       .select("id")
       .eq("unique_key", uniqueKey)
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (existingLog) {
-      return { skipped: true, reason: "already_sent" as const };
+      return { skipped: true as const, reason: "already_sent" as const };
     }
   }
 
@@ -43,6 +66,22 @@ export async function sendPushToUser({
     .select("*")
     .eq("user_id", userId)
     .maybeSingle();
+
+  if (pref && pref.push_enabled === false) {
+    if (uniqueKey) {
+      await supabase.from("notification_delivery_log").insert({
+        user_id: userId,
+        notification_type: notificationType,
+        entity_type: entityType,
+        entity_id: entityId,
+        unique_key: uniqueKey,
+        delivered: false,
+        error_message: "Push disabled by user preference",
+      });
+    }
+
+    return { skipped: true as const, reason: "push_disabled" as const };
+  }
 
   const { data: tokens, error: tokensError } = await supabase
     .from("push_tokens")
@@ -55,7 +94,7 @@ export async function sendPushToUser({
   }
 
   const activeTokens = (tokens ?? [])
-    .map((x: any) => x.expo_push_token)
+    .map((x: any) => normalizeToken(x?.expo_push_token))
     .filter(Boolean);
 
   if (activeTokens.length === 0) {
@@ -71,7 +110,7 @@ export async function sendPushToUser({
       });
     }
 
-    return { skipped: true, reason: "no_token" as const };
+    return { skipped: true as const, reason: "no_token" as const };
   }
 
   const messages = activeTokens.map((token: string) => ({
@@ -87,15 +126,52 @@ export async function sendPushToUser({
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      "Accept-encoding": "gzip, deflate",
     },
     body: JSON.stringify(messages),
   });
 
   const result = await response.json().catch(() => null);
 
-  const ok = response.ok;
+  if (!response.ok) {
+    for (const token of activeTokens) {
+      await supabase.from("notification_delivery_log").insert({
+        user_id: userId,
+        notification_type: notificationType,
+        entity_type: entityType,
+        entity_id: entityId,
+        unique_key: uniqueKey,
+        push_token: token,
+        delivered: false,
+        error_message: JSON.stringify(result),
+      });
+    }
 
-  for (const token of activeTokens) {
+    throw new Error(
+      result?.errors?.[0]?.message || "Expo push küldés sikertelen."
+    );
+  }
+
+  const tickets: ExpoPushTicket[] = Array.isArray(result?.data) ? result.data : [];
+  const invalidTokens: string[] = [];
+
+  for (let i = 0; i < activeTokens.length; i += 1) {
+    const token = activeTokens[i];
+    const ticket = tickets[i];
+
+    const delivered = ticket?.status === "ok";
+    const errorMessage =
+      ticket?.status === "error"
+        ? ticket?.message || ticket?.details?.error || JSON.stringify(ticket)
+        : null;
+
+    if (
+      ticket?.status === "error" &&
+      ticket?.details?.error === "DeviceNotRegistered"
+    ) {
+      invalidTokens.push(token);
+    }
+
     await supabase.from("notification_delivery_log").insert({
       user_id: userId,
       notification_type: notificationType,
@@ -103,14 +179,26 @@ export async function sendPushToUser({
       entity_id: entityId,
       unique_key: uniqueKey,
       push_token: token,
-      delivered: ok,
-      error_message: ok ? null : JSON.stringify(result),
+      delivered,
+      error_message: errorMessage,
     });
   }
 
-  if (!ok) {
-    throw new Error("Expo push küldés sikertelen.");
+  if (invalidTokens.length > 0) {
+    await supabase
+      .from("push_tokens")
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .in("expo_push_token", invalidTokens)
+      .eq("user_id", userId);
   }
 
-  return { success: true };
+  return {
+    success: true,
+    sent: activeTokens.length,
+    invalidated: invalidTokens.length,
+    tickets,
+  };
 }

@@ -44,6 +44,8 @@ export async function createAndSendNotification({
       ...(data ?? {}),
       link: link ?? null,
       type,
+      entityType,
+      entityId,
     },
   });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createAndSendNotification } from "@/lib/notifications/createAndSendNotification";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,7 +22,8 @@ function toPublicName(fullName: string | null | undefined) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+
     const threadId = String(body?.threadId || "");
     const senderId = String(body?.senderId || "");
     const message = String(body?.message || "").trim();
@@ -35,19 +37,40 @@ export async function POST(req: Request) {
 
     const { data: thread, error: threadError } = await admin
       .from("chat_threads")
-      .select("id,buyer_user_id,seller_user_id,listing_id")
+      .select("id,buyer_id,seller_id,listing_id")
       .eq("id", threadId)
-      .single();
+      .maybeSingle();
 
-    if (threadError || !thread) {
+    if (threadError) {
       return NextResponse.json(
-        { error: threadError?.message || "Chat szál nem található." },
+        { error: threadError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!thread) {
+      return NextResponse.json(
+        { error: "Chat szál nem található." },
         { status: 404 }
       );
     }
 
+    if (thread.buyer_id !== senderId && thread.seller_id !== senderId) {
+      return NextResponse.json(
+        { error: "Nincs hozzáférésed ehhez a beszélgetéshez." },
+        { status: 403 }
+      );
+    }
+
     const receiverUserId =
-      thread.buyer_user_id === senderId ? thread.seller_user_id : thread.buyer_user_id;
+      thread.buyer_id === senderId ? thread.seller_id : thread.buyer_id;
+
+    if (!receiverUserId) {
+      return NextResponse.json(
+        { error: "Nem található a címzett felhasználó." },
+        { status: 400 }
+      );
+    }
 
     const { data: inserted, error: insertError } = await admin
       .from("chat_messages")
@@ -66,32 +89,44 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("full_name,public_display_name")
-      .eq("id", senderId)
-      .maybeSingle();
+    const [{ data: profile }, { data: listing }] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("full_name,public_display_name")
+        .eq("id", senderId)
+        .maybeSingle(),
+      admin
+        .from("listings")
+        .select("id,title")
+        .eq("id", thread.listing_id)
+        .maybeSingle(),
+    ]);
 
     const senderName =
       (profile as any)?.public_display_name ||
       toPublicName((profile as any)?.full_name);
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://licitera.hu";
+    const listingTitle = (listing as any)?.title ?? "Hirdetés";
+    const listingId = (listing as any)?.id ?? thread.listing_id ?? null;
 
-    if (receiverUserId) {
-      await fetch(`${siteUrl}/api/notifications/chat-message`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          receiverUserId,
-          senderName,
-          threadId,
-          listingId: thread.listing_id,
-        }),
-      });
-    }
+    await createAndSendNotification({
+      userId: receiverUserId,
+      type: "chat_message",
+      title: `${senderName} üzent`,
+      message: `${listingTitle} • ${message}`,
+      link: `/chat/${threadId}`,
+      entityType: "chat_thread",
+      entityId: threadId,
+      uniqueKey: `chat:${threadId}:${inserted.id}`,
+      data: {
+        type: "chat_message",
+        threadId,
+        listingId,
+        listingTitle,
+        senderName,
+        messagePreview: message,
+      },
+    });
 
     return NextResponse.json({
       ok: true,

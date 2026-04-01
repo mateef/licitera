@@ -9,10 +9,11 @@ const admin = createClient(
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const userId = String(body?.userId || "");
-    const title = String(body?.title || "");
-    const message = String(body?.message || "");
+    const body = await req.json().catch(() => null);
+
+    const userId = String(body?.userId || "").trim();
+    const title = String(body?.title || "").trim();
+    const message = String(body?.message || "").trim();
     const data = body?.data ?? {};
 
     if (!userId || !title || !message) {
@@ -22,34 +23,50 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: tokens, error } = await admin
+    const { data: tokenRows, error: tokenError } = await admin
       .from("push_tokens")
       .select("expo_push_token")
       .eq("user_id", userId)
       .eq("is_active", true);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (tokenError) {
+      return NextResponse.json({ error: tokenError.message }, { status: 500 });
     }
 
-    const pushTokens = (tokens ?? [])
-      .map((x: any) => x.expo_push_token)
+    const pushTokens = (tokenRows ?? [])
+      .map((row: any) => String(row?.expo_push_token || "").trim())
       .filter(Boolean);
 
     if (pushTokens.length === 0) {
-      return NextResponse.json({ ok: true, sent: 0 });
+      return NextResponse.json({
+        ok: true,
+        sent: 0,
+        reason: "Nincs aktív push token.",
+      });
     }
 
-    await sendExpoPush({
+    const result = await sendExpoPush({
       to: pushTokens,
       title,
       body: message,
       data,
     });
 
+    if (result.invalidTokens.length > 0) {
+      await admin
+        .from("push_tokens")
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        })
+        .in("expo_push_token", result.invalidTokens);
+    }
+
     return NextResponse.json({
       ok: true,
-      sent: pushTokens.length,
+      sent: result.sent,
+      invalidated: result.invalidTokens.length,
+      tickets: result.tickets,
     });
   } catch (e: any) {
     return NextResponse.json(

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createAndSendNotification } from "@/lib/notifications/createAndSendNotification";
 
 const serviceSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,36 +87,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Hibás címzett." }, { status: 403 });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://licitera.hu";
+    const finalListingId = listingId || thread.listing_id || null;
+    const trimmedPreview = messagePreview.trim();
+    const finalMessage = `${listingTitle} • ${
+      trimmedPreview || "Új üzenet érkezett."
+    }`;
 
-    const pushRes = await fetch(`${siteUrl}/api/push/send`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    await createAndSendNotification({
+      userId: realReceiverUserId,
+      type: "chat_message",
+      title: `${senderName} üzent`,
+      message: finalMessage,
+      link: `/chat/${threadId}`,
+      entityType: "chat_thread",
+      entityId: threadId,
+      uniqueKey: `chat_message:${threadId}:${user.id}:${trimmedPreview}:${Date.now()}`,
+      data: {
+        type: "chat_message",
+        threadId,
+        listingId: finalListingId,
+        listingTitle,
+        senderName,
+        messagePreview: trimmedPreview,
       },
-      body: JSON.stringify({
-        userId: realReceiverUserId,
-        title: `${senderName} üzent`,
-        message: `${listingTitle} • ${messagePreview || "Új üzenet érkezett."}`,
-        data: {
-          type: "chat_message",
-          threadId,
-          listingId: listingId || thread.listing_id || undefined,
-          listingTitle,
-          senderName,
-          messagePreview,
-        },
-      }),
     });
-
-    if (!pushRes.ok) {
-      const pushData = await pushRes.json().catch(() => null);
-
-      return NextResponse.json(
-        { error: pushData?.error || "Push küldési hiba." },
-        { status: 500 }
-      );
-    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

@@ -5,24 +5,44 @@ type ExpoPushMessage = {
   data?: Record<string, any>;
 };
 
+type ExpoPushTicket = {
+  status: "ok" | "error";
+  id?: string;
+  message?: string;
+  details?: {
+    error?: string;
+    expoPushToken?: string;
+  };
+};
+
+function normalizeTokens(to: string | string[]) {
+  const raw = Array.isArray(to) ? to : [to];
+
+  return raw
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)
+    .filter((x) => x.startsWith("ExponentPushToken[") || x.startsWith("ExpoPushToken["));
+}
+
 export async function sendExpoPush(message: ExpoPushMessage) {
-  const messages = Array.isArray(message.to)
-    ? message.to.map((token) => ({
-        to: token,
-        sound: "default",
-        title: message.title,
-        body: message.body,
-        data: message.data ?? {},
-      }))
-    : [
-        {
-          to: message.to,
-          sound: "default",
-          title: message.title,
-          body: message.body,
-          data: message.data ?? {},
-        },
-      ];
+  const tokens = normalizeTokens(message.to);
+
+  if (tokens.length === 0) {
+    return {
+      ok: true,
+      sent: 0,
+      tickets: [] as ExpoPushTicket[],
+      invalidTokens: [] as string[],
+    };
+  }
+
+  const messages = tokens.map((token) => ({
+    to: token,
+    sound: "default",
+    title: message.title,
+    body: message.body,
+    data: message.data ?? {},
+  }));
 
   const res = await fetch("https://exp.host/--/api/v2/push/send", {
     method: "POST",
@@ -34,11 +54,32 @@ export async function sendExpoPush(message: ExpoPushMessage) {
     body: JSON.stringify(messages),
   });
 
-  const data = await res.json().catch(() => null);
+  const json = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new Error(data?.errors?.[0]?.message || "Expo push küldési hiba.");
+    throw new Error(
+      json?.errors?.[0]?.message ||
+        json?.message ||
+        "Expo push küldési hiba."
+    );
   }
 
-  return data;
+  const tickets = Array.isArray(json?.data) ? (json.data as ExpoPushTicket[]) : [];
+  const invalidTokens: string[] = [];
+
+  tickets.forEach((ticket, index) => {
+    if (
+      ticket?.status === "error" &&
+      ticket?.details?.error === "DeviceNotRegistered"
+    ) {
+      invalidTokens.push(tokens[index]);
+    }
+  });
+
+  return {
+    ok: true,
+    sent: tokens.length,
+    tickets,
+    invalidTokens,
+  };
 }
