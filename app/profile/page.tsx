@@ -18,6 +18,8 @@ import {
   UserRound,
   Wallet,
   ArrowRight,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 
 type ProfileRow = {
@@ -65,6 +67,7 @@ export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [sendingSms, setSendingSms] = useState(false);
   const [verifyingSms, setVerifyingSms] = useState(false);
@@ -485,6 +488,58 @@ export default function ProfilePage() {
     await loadReviews(userId);
   }
 
+  async function deleteAccount() {
+    const confirmed = window.confirm(
+      "Biztosan törölni szeretnéd a Licitera fiókodat? Ez a művelet nem vonható vissza."
+    );
+
+    if (!confirmed) return;
+
+    const finalConfirmed = window.confirm(
+      "Utolsó megerősítés: a fiókodhoz tartozó hozzáférés megszűnik, és a törlési folyamat elindul. Folytatod?"
+    );
+
+    if (!finalConfirmed) return;
+
+    setDeleteLoading(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        toast.error("A fiók törléséhez előbb jelentkezz be.");
+        return;
+      }
+
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(data?.error || "Nem sikerült törölni a fiókot.");
+        return;
+      }
+
+      await supabase.auth.signOut();
+      toast.success("A fiók törlése sikeres volt.");
+      window.location.href = "/login";
+    } catch (e: any) {
+      toast.error(e?.message || "Nem sikerült törölni a fiókot.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadAllProfileData();
 
@@ -771,6 +826,48 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-[1.75rem] border-red-200 bg-red-50/60 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-red-700">
+            <Trash2 className="h-5 w-5" />
+            Fiók törlése
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="rounded-2xl border border-red-200 bg-white p-4 text-sm leading-6 text-slate-700">
+            A fiók törlése végleges művelet. A hozzáférésed megszűnik, és a rendszer elindítja a
+            fiókhoz kapcsolódó személyes adatok törlését vagy anonimizálását. Bizonyos adatokat
+            jogszabályi vagy biztonsági okból továbbra is megőrizhetünk.
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                A művelet nem vonható vissza. Csak akkor folytasd, ha biztosan törölni szeretnéd
+                a fiókodat.
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="destructive"
+              className="rounded-xl"
+              onClick={deleteAccount}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? "Fiók törlése..." : "Fiók végleges törlése"}
+            </Button>
+
+            <Button variant="outline" asChild className="rounded-xl">
+              <Link href="/delete-account">Részletes tájékoztató</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="rounded-[1.75rem] border-slate-200/80">
         <CardHeader>
