@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createNotification } from "@/lib/notifications/createNotification";
+import { createAndSendNotification } from "@/lib/notifications/createAndSendNotification";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,21 +34,26 @@ export async function POST(req: Request) {
       );
     }
 
-    // Eladó értesítése
     if (listing.user_id && listing.user_id !== bidderUserId) {
-      await createNotification({
+      await createAndSendNotification({
         userId: listing.user_id,
         type: "new_bid",
         title: "Új licit érkezett",
         message: `Új licit érkezett a hirdetésedre: ${listing.title}`,
         link: `/listing/${listing.id}`,
+        entityType: "listing",
+        entityId: listing.id,
+        uniqueKey: `new_bid:seller:${listing.id}:${bidderUserId}:${amount}`,
+        data: {
+          type: "new_bid",
+          listingId: listing.id,
+        },
       });
     }
 
-    // Előző legmagasabb licitáló keresése
     const { data: previousBids, error: previousBidsError } = await supabase
       .from("bids")
-      .select("user_id, amount, created_at")
+      .select("user_id,amount,created_at")
       .eq("listing_id", listingId)
       .lt("amount", amount)
       .order("amount", { ascending: false })
@@ -63,12 +68,19 @@ export async function POST(req: Request) {
         previousTopBidderId !== bidderUserId &&
         previousTopBidderId !== listing.user_id
       ) {
-        await createNotification({
+        await createAndSendNotification({
           userId: previousTopBidderId,
           type: "outbid",
           title: "Túllicitáltak",
           message: `Valaki magasabb ajánlatot tett ennél: ${listing.title}`,
           link: `/listing/${listing.id}`,
+          entityType: "listing",
+          entityId: listing.id,
+          uniqueKey: `outbid:${listing.id}:${previousTopBidderId}:${amount}`,
+          data: {
+            type: "outbid",
+            listingId: listing.id,
+          },
         });
       }
     }

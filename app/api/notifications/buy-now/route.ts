@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { createNotification } from "@/lib/notifications/createNotification";
+import { createAndSendNotification } from "@/lib/notifications/createAndSendNotification";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
 
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, full_name, email, phone")
+      .select("id,full_name,email,phone")
       .in("id", userIds);
 
     if (profilesError || !profiles) {
@@ -191,20 +191,34 @@ export async function POST(req: Request) {
       `,
     });
 
-    await createNotification({
+    await createAndSendNotification({
       userId: listing.user_id,
       type: "auction_sold",
       title: "A termékedet megvették villámáron",
       message: `A következő hirdetésed villámáron elkelt: ${listing.title}`,
       link: `/listing/${listing.id}`,
+      entityType: "listing",
+      entityId: listing.id,
+      uniqueKey: `buy_now:seller:${listing.id}:${listing.winner_user_id}`,
+      data: {
+        type: "auction_sold",
+        listingId: listing.id,
+      },
     });
 
-    await createNotification({
+    await createAndSendNotification({
       userId: listing.winner_user_id,
       type: "auction_won",
       title: "Sikeres villámáras vásárlás",
       message: `Sikeresen megvásároltad ezt a terméket: ${listing.title}`,
       link: `/listing/${listing.id}`,
+      entityType: "listing",
+      entityId: listing.id,
+      uniqueKey: `buy_now:buyer:${listing.id}:${listing.winner_user_id}`,
+      data: {
+        type: "auction_won",
+        listingId: listing.id,
+      },
     });
 
     return NextResponse.json({ success: true });

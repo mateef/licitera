@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createAndSendNotification } from "@/lib/notifications/createAndSendNotification";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,42 +29,42 @@ export async function POST(req: Request) {
       );
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://licitera.hu";
-
     const tasks: Promise<any>[] = [];
 
     if (listing.user_id) {
       tasks.push(
-        fetch(`${siteUrl}/api/push/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: listing.user_id,
-            title: "Lezárult az aukciód",
-            message: `A(z) "${listing.title}" aukció lezárult.`,
-            data: {
-              type: "auction_ended",
-              listingId,
-            },
-          }),
+        createAndSendNotification({
+          userId: listing.user_id,
+          type: "auction_ended",
+          title: "Lezárult az aukciód",
+          message: `A(z) "${listing.title}" aukció lezárult.`,
+          link: `/listing/${listing.id}`,
+          entityType: "listing",
+          entityId: listing.id,
+          uniqueKey: `auction_ended:seller:${listing.id}`,
+          data: {
+            type: "auction_ended",
+            listingId: listing.id,
+          },
         })
       );
     }
 
     if (listing.winner_user_id) {
       tasks.push(
-        fetch(`${siteUrl}/api/push/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: listing.winner_user_id,
-            title: "Megnyerted az aukciót",
-            message: `Gratulálunk, megnyerted: ${listing.title}`,
-            data: {
-              type: "auction_ended",
-              listingId,
-            },
-          }),
+        createAndSendNotification({
+          userId: listing.winner_user_id,
+          type: "auction_won",
+          title: "Megnyerted az aukciót",
+          message: `Gratulálunk, megnyerted: ${listing.title}`,
+          link: `/listing/${listing.id}`,
+          entityType: "listing",
+          entityId: listing.id,
+          uniqueKey: `auction_ended:winner:${listing.id}:${listing.winner_user_id}`,
+          data: {
+            type: "auction_ended",
+            listingId: listing.id,
+          },
         })
       );
     }
