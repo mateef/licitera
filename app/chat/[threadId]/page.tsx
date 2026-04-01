@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  AlertTriangle,
   ArrowLeft,
   Clock3,
   Lock,
@@ -14,7 +15,6 @@ import {
   Send,
   ShieldCheck,
   Star,
-  UserRound,
   X,
 } from "lucide-react";
 
@@ -49,6 +49,15 @@ type ProfileRow = {
   public_display_name: string | null;
 };
 
+const USER_REPORT_REASONS = [
+  "Csalás gyanúja",
+  "Hamis vagy megtévesztő profil",
+  "Zaklató vagy sértő viselkedés",
+  "Tiltott termékek / szabályszegés",
+  "Spam vagy visszaélés",
+  "Egyéb",
+];
+
 function toPublicName(fullName: string | null | undefined) {
   if (!fullName) return "Ismeretlen felhasználó";
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -70,7 +79,6 @@ function formatDate(value: string) {
 
 export default function ChatThreadPage() {
   const params = useParams<{ threadId: string }>();
-  const router = useRouter();
   const threadId = typeof params?.threadId === "string" ? params.threadId : "";
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -93,6 +101,11 @@ export default function ChatThreadPage() {
   const [alreadyReviewed, setAlreadyReviewed] = useState(false);
   const [reviewRating, setReviewRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState("");
+
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [selectedReportReason, setSelectedReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -351,14 +364,34 @@ export default function ChatThreadPage() {
     const clean = text.trim();
 
     try {
-      const { error } = await supabase.from("chat_messages").insert({
-        thread_id: threadId,
-        sender_id: userId,
-        message: clean,
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        window.alert("Lejárt a munkamenet. Jelentkezz be újra.");
+        return;
+      }
+
+      const res = await fetch("/api/chat/send-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          threadId,
+          senderId: userId,
+          message: clean,
+        }),
       });
 
-      if (error) {
-        window.alert(error.message || "Nem sikerült elküldeni az üzenetet.");
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        window.alert(data?.error || "Nem sikerült elküldeni az üzenetet.");
         return;
       }
 
@@ -418,6 +451,52 @@ export default function ChatThreadPage() {
       window.alert("Az értékelés sikeresen elküldve.");
     } finally {
       setReviewSubmitting(false);
+    }
+  }
+
+  async function handleSubmitUserReport() {
+    try {
+      if (!userId) {
+        window.alert("Jelentés küldéséhez jelentkezz be.");
+        return;
+      }
+
+      if (!otherUserId) {
+        window.alert("Hiányzó felhasználó azonosító.");
+        return;
+      }
+
+      if (otherUserId === userId) {
+        window.alert("Saját magadat nem jelentheted.");
+        return;
+      }
+
+      if (!selectedReportReason) {
+        window.alert("Válassz egy jelentési okot.");
+        return;
+      }
+
+      setReportSubmitting(true);
+
+      const { error } = await supabase.from("user_reports").insert({
+        reporter_user_id: userId,
+        reported_user_id: otherUserId,
+        reason: selectedReportReason,
+        details: reportDetails.trim() || null,
+        status: "pending",
+      });
+
+      if (error) {
+        window.alert(error.message || "Nem sikerült elküldeni a jelentést.");
+        return;
+      }
+
+      setSelectedReportReason("");
+      setReportDetails("");
+      setReportModalOpen(false);
+      window.alert("A jelentésedet elküldtük felülvizsgálatra.");
+    } finally {
+      setReportSubmitting(false);
     }
   }
 
@@ -519,17 +598,46 @@ export default function ChatThreadPage() {
               </span>
             </div>
 
-            <div className="mt-5">
-              <Button
-                type="button"
-                onClick={openReviewModal}
-                disabled={reviewButtonState.disabled || reviewLoading}
-                className="rounded-2xl"
-                variant={reviewButtonState.disabled ? "secondary" : "default"}
-              >
-                {reviewLoading ? "Betöltés..." : reviewButtonState.label}
-              </Button>
-              <p className="mt-2 text-xs text-slate-500">{reviewButtonState.hint}</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Button
+                  type="button"
+                  onClick={openReviewModal}
+                  disabled={reviewButtonState.disabled || reviewLoading}
+                  className="w-full rounded-2xl"
+                  variant={reviewButtonState.disabled ? "secondary" : "default"}
+                >
+                  {reviewLoading ? "Betöltés..." : reviewButtonState.label}
+                </Button>
+                <p className="mt-2 text-xs text-slate-500">{reviewButtonState.hint}</p>
+              </div>
+
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-2xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => {
+                    if (!userId) {
+                      window.alert("Jelentés küldéséhez jelentkezz be.");
+                      return;
+                    }
+
+                    if (!otherUserId || otherUserId === userId) {
+                      window.alert("A másik fél jelenleg nem jelenthető.");
+                      return;
+                    }
+
+                    setReportModalOpen(true);
+                  }}
+                >
+                  <AlertTriangle className="mr-2 h-4 w-4" />
+                  Felhasználó jelentése
+                </Button>
+                <p className="mt-2 text-xs text-slate-500">
+                  Jelentsd a másik felet, ha csalásra, zaklatásra vagy más visszaélésre gyanakszol.
+                </p>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -598,7 +706,11 @@ export default function ChatThreadPage() {
                         </div>
 
                         {mine && msg.id === lastOwnMessage?.id ? (
-                          <div className={`mt-1 text-[11px] font-medium ${isLastMessageSeen(msg) ? "text-emerald-300" : "text-slate-300"}`}>
+                          <div
+                            className={`mt-1 text-[11px] font-medium ${
+                              isLastMessageSeen(msg) ? "text-emerald-300" : "text-slate-300"
+                            }`}
+                          >
                             {isLastMessageSeen(msg) ? "Látta" : "Elküldve"}
                           </div>
                         ) : null}
@@ -710,6 +822,86 @@ export default function ChatThreadPage() {
                 disabled={reviewSubmitting}
               >
                 {reviewSubmitting ? "Küldés..." : "Értékelés elküldése"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reportModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xl font-black tracking-tight text-slate-900">
+                  Felhasználó jelentése
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">{otherUserName}</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => !reportSubmitting && setReportModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Válaszd ki a jelentés okát, és írj rövid indoklást, ha szükséges.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {USER_REPORT_REASONS.map((reason) => {
+                const active = selectedReportReason === reason;
+
+                return (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setSelectedReportReason(reason)}
+                    className={[
+                      "rounded-full border px-3 py-2 text-sm font-medium transition",
+                      active
+                        ? "border-red-300 bg-red-50 text-red-600"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
+                    ].join(" ")}
+                  >
+                    {reason}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-2 text-sm font-semibold text-slate-900">Indoklás</div>
+              <textarea
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                placeholder="Írd le röviden, mi a probléma..."
+                className="min-h-[120px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-300"
+                disabled={reportSubmitting}
+              />
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 rounded-2xl"
+                onClick={() => !reportSubmitting && setReportModalOpen(false)}
+                disabled={reportSubmitting}
+              >
+                Mégse
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 rounded-2xl bg-red-600 hover:bg-red-700"
+                onClick={handleSubmitUserReport}
+                disabled={reportSubmitting || !selectedReportReason}
+              >
+                {reportSubmitting ? "Küldés..." : "Jelentés elküldése"}
               </Button>
             </div>
           </div>
