@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     const threadId = String(body?.threadId || "");
     const listingId = String(body?.listingId || "");
     const listingTitle = String(body?.listingTitle || "Hirdetés");
-    const messagePreview = String(body?.messagePreview || "");
+    const messagePreview = String(body?.messagePreview || "").trim();
 
     if (!receiverUserId || !threadId) {
       return NextResponse.json(
@@ -87,28 +87,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Hibás címzett." }, { status: 403 });
     }
 
-    const finalListingId = listingId || thread.listing_id || null;
-    const trimmedPreview = messagePreview.trim();
-    const finalMessage = `${listingTitle} • ${
-      trimmedPreview || "Új üzenet érkezett."
-    }`;
-
     await createAndSendNotification({
       userId: realReceiverUserId,
       type: "chat_message",
       title: `${senderName} üzent`,
-      message: finalMessage,
-      link: `/chat/${threadId}`,
+      message: `${listingTitle} • ${messagePreview || "Új üzenet érkezett."}`,
+      link: `/(app)/(tabs)/chat/${threadId}`,
       entityType: "chat_thread",
       entityId: threadId,
-      uniqueKey: `chat_message:${threadId}:${user.id}:${trimmedPreview}:${Date.now()}`,
+      uniqueKey: `chat_message_route:${threadId}:${user.id}:${messagePreview}`,
       data: {
         type: "chat_message",
         threadId,
-        listingId: finalListingId,
+        listingId: listingId || thread.listing_id || null,
         listingTitle,
         senderName,
-        messagePreview: trimmedPreview,
+        messagePreview,
       },
     });
 

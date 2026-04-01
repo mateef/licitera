@@ -22,10 +22,37 @@ function toPublicName(fullName: string | null | undefined) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const authHeader = req.headers.get("authorization") || "";
+    const accessToken = authHeader.replace("Bearer ", "").trim();
 
-    const threadId = String(body?.threadId || "");
-    const senderId = String(body?.senderId || "");
+    if (!accessToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const anon = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await anon.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => null);
+    const threadId = String(body?.threadId || "").trim();
+    const senderId = String(body?.senderId || "").trim();
     const message = String(body?.message || "").trim();
 
     if (!threadId || !senderId || !message) {
@@ -35,42 +62,38 @@ export async function POST(req: Request) {
       );
     }
 
+    if (senderId !== user.id) {
+      return NextResponse.json(
+        { error: "A senderId nem egyezik a bejelentkezett felhasználóval." },
+        { status: 403 }
+      );
+    }
+
     const { data: thread, error: threadError } = await admin
       .from("chat_threads")
       .select("id,buyer_id,seller_id,listing_id")
       .eq("id", threadId)
       .maybeSingle();
 
-    if (threadError) {
+    if (threadError || !thread) {
       return NextResponse.json(
-        { error: threadError.message },
-        { status: 500 }
-      );
-    }
-
-    if (!thread) {
-      return NextResponse.json(
-        { error: "Chat szál nem található." },
+        { error: threadError?.message || "Chat szál nem található." },
         { status: 404 }
       );
     }
 
-    if (thread.buyer_id !== senderId && thread.seller_id !== senderId) {
+    const isParticipant =
+      user.id === thread.buyer_id || user.id === thread.seller_id;
+
+    if (!isParticipant) {
       return NextResponse.json(
-        { error: "Nincs hozzáférésed ehhez a beszélgetéshez." },
+        { error: "Ehhez a beszélgetéshez nincs hozzáférésed." },
         { status: 403 }
       );
     }
 
     const receiverUserId =
       thread.buyer_id === senderId ? thread.seller_id : thread.buyer_id;
-
-    if (!receiverUserId) {
-      return NextResponse.json(
-        { error: "Nem található a címzett felhasználó." },
-        { status: 400 }
-      );
-    }
 
     const { data: inserted, error: insertError } = await admin
       .from("chat_messages")
@@ -89,44 +112,61 @@ export async function POST(req: Request) {
       );
     }
 
-    const [{ data: profile }, { data: listing }] = await Promise.all([
-      admin
-        .from("profiles")
-        .select("full_name,public_display_name")
-        .eq("id", senderId)
-        .maybeSingle(),
-      admin
-        .from("listings")
-        .select("id,title")
-        .eq("id", thread.listing_id)
-        .maybeSingle(),
-    ]);
+    const nowIso = new Date().toISOString();
 
-    const senderName =
-      (profile as any)?.public_display_name ||
-      toPublicName((profile as any)?.full_name);
+    await admin
+      .from("chat_thread_members")
+      .upsert(
+        {
+          thread_id: threadId,
+          user_id: senderId,
+          last_read_at: nowIso,
+        },
+        {
+          onConflict: "thread_id,user_id",
+        }
+      );
 
-    const listingTitle = (listing as any)?.title ?? "Hirdetés";
-    const listingId = (listing as any)?.id ?? thread.listing_id ?? null;
+    if (receiverUserId) {
+      const [{ data: profile }, { data: listing }] = await Promise.all([
+        admin
+          .from("profiles")
+          .select("full_name,public_display_name")
+          .eq("id", senderId)
+          .maybeSingle(),
+        admin
+          .from("listings")
+          .select("id,title")
+          .eq("id", thread.listing_id)
+          .maybeSingle(),
+      ]);
 
-    await createAndSendNotification({
-      userId: receiverUserId,
-      type: "chat_message",
-      title: `${senderName} üzent`,
-      message: `${listingTitle} • ${message}`,
-      link: `/chat/${threadId}`,
-      entityType: "chat_thread",
-      entityId: threadId,
-      uniqueKey: `chat:${threadId}:${inserted.id}`,
-      data: {
+      const senderName =
+        (profile as any)?.public_display_name ||
+        toPublicName((profile as any)?.full_name);
+
+      const listingTitle = String((listing as any)?.title || "Hirdetés");
+      const listingId = String((listing as any)?.id || thread.listing_id || "");
+
+      await createAndSendNotification({
+        userId: receiverUserId,
         type: "chat_message",
-        threadId,
-        listingId,
-        listingTitle,
-        senderName,
-        messagePreview: message,
-      },
-    });
+        title: `${senderName} üzent`,
+        message: `${listingTitle} • ${message}`,
+        link: `/(app)/(tabs)/chat/${threadId}`,
+        entityType: "chat_thread",
+        entityId: threadId,
+        uniqueKey: `chat_message:${inserted.id}`,
+        data: {
+          type: "chat_message",
+          threadId,
+          listingId,
+          listingTitle,
+          senderName,
+          messagePreview: message,
+        },
+      });
+    }
 
     return NextResponse.json({
       ok: true,
