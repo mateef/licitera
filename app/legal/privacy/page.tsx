@@ -11,12 +11,14 @@ const SECTIONS = [
       "Székhely: 2700 Cegléd, Árpa utca 3.",
       "E-mail: fmate2000@gmail.com",
       "Telefonszám: +36305873830",
+      "Az Adatkezelő felel a Licitera platform működéséhez kapcsolódó személyes adatok kezeléséért.",
     ],
   },
   {
     title: "2. Kezelt adatok köre",
     body: [
-      "A regisztráció és a platform használata során különösen az alábbi adatokat kezelhetjük: név, e-mail cím, telefonszám, profiladatok, hirdetésekhez és licitekhez kapcsolódó adatok, üzenetek, értékelések, számlázási és pénzügyi adatok, valamint technikai és naplózási adatok.",
+      "A regisztráció és a platform használata során különösen az alábbi adatokat kezelhetjük: név, e-mail cím, telefonszám, profiladatok, hirdetésekhez és licitekhez kapcsolódó adatok, üzenetek, értékelések, számlázási és pénzügyi adatok, push értesítéshez kapcsolódó azonosítók, valamint technikai és naplózási adatok.",
+      "A felhasználó által feltöltött képeket a hirdetések létrehozása, megjelenítése és kezelése céljából kezelhetjük.",
       "Sikeres aukciózárás vagy villámáras vásárlás esetén a tranzakció teljesítéséhez szükséges kapcsolattartási adatok – különösen a vevő és az eladó e-mail címe és telefonszáma – a másik fél részére hozzáférhetővé válhatnak.",
     ],
   },
@@ -28,7 +30,8 @@ const SECTIONS = [
       "A felek közötti kapcsolatfelvétel és a sikeres tranzakció teljesítésének elősegítése.",
       "Ennek keretében a sikeres tranzakciót követően a vevő és az eladó kapcsolattartási adatainak megosztása belső chatüzenetben, rendszerüzenetben és szükség esetén e-mail útján is megtörténhet.",
       "Számlázás, díjkezelés, előfizetések kezelése és pénzügyi adminisztráció.",
-      "Biztonság, visszaélések megelőzése, moderáció és jogérvényesítés.",
+      "Push értesítések küldése, például licithez, üzenethez, rendszerüzenethez vagy fontos fiókeseményhez kapcsolódóan.",
+      "Biztonság, visszaélések megelőzése, moderáció, hibakeresés és jogérvényesítés.",
       "Jogszabályi kötelezettségek teljesítése.",
     ],
   },
@@ -38,6 +41,7 @@ const SECTIONS = [
       "A személyes adatok kezelése elsősorban a felhasználó és az Adatkezelő között létrejövő szolgáltatási jogviszony teljesítéséhez szükséges.",
       "Bizonyos adatkezelések jogszabályi kötelezettség teljesítésén alapulnak, különösen a számviteli, adózási és fogyasztóvédelmi kötelezettségek tekintetében.",
       "Egyes adatkezelések az Adatkezelő jogos érdekén alapulnak, különösen a platform biztonságának fenntartása, a visszaélések megelőzése, a vitás helyzetek kezelése és a szolgáltatás rendeltetésszerű működésének biztosítása érdekében.",
+      "Azokban az esetekben, amikor valamely adatkezeléshez hozzájárulás szükséges, az adatkezelés jogalapja a felhasználó önkéntes hozzájárulása.",
       "A sikeres tranzakciót követő kapcsolatfelvételi adatok megosztásának jogalapja a tranzakció teljesítéséhez szükséges adatkezelés.",
     ],
   },
@@ -45,7 +49,7 @@ const SECTIONS = [
     title: "5. Adatfeldolgozók és technikai partnerek",
     body: [
       "A szolgáltatás működtetéséhez az Adatkezelő külső szolgáltatókat is igénybe vehet.",
-      "Ilyen szolgáltatók lehetnek különösen: Supabase, Twilio, Stripe, Resend, Számlázz.hu, valamint egyéb technikai infrastruktúrát, kommunikációs vagy fizetési megoldást biztosító partnerek.",
+      "Ilyen szolgáltatók lehetnek különösen: Supabase, Twilio, Stripe, Resend, Számlázz.hu, RevenueCat, Apple App Store, Google Play, valamint egyéb technikai infrastruktúrát, kommunikációs, értesítési vagy fizetési megoldást biztosító partnerek.",
       "Ezen partnerek kizárólag a szükséges mértékben, a meghatározott adatkezelési célok teljesítéséhez kapcsolódóan férhetnek hozzá az adatokhoz.",
     ],
   },
@@ -55,6 +59,7 @@ const SECTIONS = [
       "A személyes adatokhoz főszabály szerint az Adatkezelő, valamint az általa igénybe vett adatfeldolgozók férhetnek hozzá.",
       "Sikeres aukciózárás vagy villámáras vásárlás esetén az eladó és a vevő egymás részére címzettnek minősülhet a tranzakció teljesítéséhez szükséges kapcsolattartási adatok tekintetében.",
       "Ez azt jelenti, hogy a felek e-mail címe és telefonszáma a másik fél számára a platformon belüli chatben, rendszerüzenetben vagy e-mailben megismerhetővé válhat, amennyiben ez az adásvétel lebonyolításához szükséges.",
+      "Előfordulhat, hogy bizonyos technikai partnerek részére az adatok nemzetközi adattovábbítás keretében kerülnek továbbításra vagy hozzáférhetővé válnak, amennyiben ez a szolgáltatás működéséhez szükséges. Ilyen esetben az Adatkezelő megfelelő garanciák alkalmazására törekszik.",
     ],
   },
   {
@@ -63,7 +68,8 @@ const SECTIONS = [
       "A személyes adatokat az Adatkezelő kizárólag a szükséges ideig kezeli.",
       "A fiókhoz kapcsolódó adatokat a fiók fennállásáig, illetve azt követően a jogszabályi kötelezettségek és a jogos érdek által indokolt időtartamig őrizhetjük meg.",
       "Számlázási és pénzügyi adatokat a vonatkozó jogszabályok alapján hosszabb ideig kötelesek lehetünk megőrizni.",
-      "A tranzakciókhoz, üzenetekhez és értékelésekhez kapcsolódó adatok megőrzésére a platform működése, a jogérvényesítés, a panaszkezelés és a visszaélések megelőzése érdekében szükség lehet.",
+      "A tranzakciókhoz, üzenetekhez, reportokhoz, moderációs eseményekhez és értékelésekhez kapcsolódó adatok megőrzésére a platform működése, a jogérvényesítés, a panaszkezelés és a visszaélések megelőzése érdekében szükség lehet.",
+      "A push értesítési tokeneket addig kezelhetjük, amíg azok a szolgáltatás működéséhez szükségesek, vagy amíg a felhasználó az értesítéseket le nem tiltja, illetve a fiókja meg nem szűnik.",
     ],
   },
   {
@@ -112,9 +118,10 @@ export default function PrivacyPage() {
           </h1>
 
           <p className="mt-4 text-sm leading-7 text-slate-600 sm:text-base">
-            Fontos számunkra, hogy átláthatóan tudd, milyen adatokat kezelünk,
-            milyen célból, milyen jogalapon, és milyen jogaid vannak ezzel kapcsolatban.
-          </p>
+  Fontos számunkra, hogy átláthatóan tudd, milyen adatokat kezelünk,
+  milyen célból, milyen jogalapon, mennyi ideig, kikkel oszthatjuk meg,
+  és milyen jogaid vannak ezzel kapcsolatban.
+</p>
         </div>
       </section>
 

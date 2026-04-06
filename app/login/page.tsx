@@ -661,7 +661,14 @@ export default function LoginPage() {
                       />
                     </div>
                   </div>
-
+                  <div className="flex justify-end">
+  <a
+    href="/forgot-password"
+    className="text-sm font-semibold text-primary underline underline-offset-4 transition hover:opacity-80"
+  >
+    Elfelejtetted a jelszavad?
+  </a>
+</div>
                   <Button
                     className="h-12 w-full rounded-2xl"
                     onClick={signIn}
