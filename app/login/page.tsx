@@ -663,7 +663,7 @@ export default function LoginPage() {
                   </div>
                   <div className="flex justify-end">
   <a
-    href="/forgot-password"
+    href="/auth/forgot-password"
     className="text-sm font-semibold text-primary underline underline-offset-4 transition hover:opacity-80"
   >
     Elfelejtetted a jelszavad?
