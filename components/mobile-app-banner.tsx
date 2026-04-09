@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { Download, X } from "lucide-react";
 
-const APP_STORE_URL = "https://apps.apple.com/us/app/licitera/id6761125527";
+const APP_STORE_URL = "https://apps.apple.com/us/app/licitera/id6761125527s";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=hu.licitera.app";
 
 const STORAGE_KEY = "licitera_mobile_app_banner_closed_until";

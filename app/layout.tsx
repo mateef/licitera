@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     apple: "/icon.png",
   },
   other: {
-    "apple-itunes-app": "app-id=6761125527",
+    "apple-itunes-app": "app-id=6761125527s",
   },
 };
 
