@@ -5,6 +5,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
+import MobileAppBanner from "@/components/mobile-app-banner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,6 +23,9 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icon.png",
     apple: "/icon.png",
+  },
+  other: {
+    "apple-itunes-app": "app-id=6761125527",
   },
 };
 
@@ -48,6 +52,8 @@ export default function RootLayout({
           <div className="absolute right-[-60px] top-[120px] h-[260px] w-[260px] rounded-full bg-fuchsia-400/16 blur-3xl" />
           <div className="absolute bottom-[-100px] left-1/2 h-[340px] w-[340px] -translate-x-1/2 rounded-full bg-indigo-300/14 blur-3xl" />
         </div>
+
+        <MobileAppBanner />
 
         <Suspense fallback={null}>
           <SiteHeader />
