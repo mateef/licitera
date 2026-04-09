@@ -144,7 +144,7 @@ export default function HomePage() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
 
-  const launchDate = useMemo(() => new Date("2026-04-10T20:00:00"), []);
+  const launchDate = useMemo(() => new Date("2026-04-11T21:00:00"), []);
   const [timeParts, setTimeParts] = useState({
     days: 0,
     hours: 0,
