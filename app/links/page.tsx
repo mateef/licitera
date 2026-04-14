@@ -33,9 +33,9 @@ export default function LiciteraLinksPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(145deg,#0d0b2b,#1d0d4a_54%,#3b0f7d_74%,#ff2f92)] px-4 py-6 text-white">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-[460px] items-center">
-        <section className="w-full rounded-[30px] border border-white/15 bg-white/10 p-6 shadow-2xl backdrop-blur-xl">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-[linear-gradient(145deg,#0d0b2b,#1d0d4a_54%,#3b0f7d_74%,#ff2f92)] px-4 py-6 text-white">
+      <div className="mx-auto flex min-h-full max-w-[460px] items-center">
+        <section className="my-auto w-full rounded-[30px] border border-white/15 bg-white/10 p-6 shadow-2xl backdrop-blur-xl">
           <div className="mb-4 flex justify-center">
             <img
               src="/icon.png"
@@ -91,6 +91,6 @@ export default function LiciteraLinksPage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
