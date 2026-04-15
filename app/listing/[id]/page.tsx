@@ -469,9 +469,18 @@ export default function ListingDetailPage() {
   }, [listing, now]);
 
   const minNextBid = useMemo(() => {
-    if (!listing) return null;
-    return listing.current_price + listing.min_increment;
-  }, [listing]);
+  if (!listing) return null;
+
+  const currentPrice = Number(listing.current_price);
+  const startingPrice = Number(listing.starting_price);
+  const minIncrement = Number(listing.min_increment);
+
+  if (currentPrice <= startingPrice) {
+    return startingPrice;
+  }
+
+  return currentPrice + minIncrement;
+}, [listing]);
 
   const isOwner =
     !!sessionUserId && !!listing?.user_id && sessionUserId === listing.user_id;
@@ -621,50 +630,83 @@ export default function ListingDetailPage() {
   }
 
   async function placeMaximumBid() {
-    setMaxBidTouched(true);
+  setMaxBidTouched(true);
 
-    if (!maxBidValidation.ok) {
-      if (maxBidValidation.error) toast.error(maxBidValidation.error);
-      else toast.error("Adj meg maximum licitet.");
+  if (!maxBidValidation.ok) {
+    if (maxBidValidation.error) toast.error(maxBidValidation.error);
+    else toast.error("Adj meg maximum licitet.");
+    return;
+  }
+
+  const { n } = parseBidAmount(maxBidAmount);
+  const amount = n;
+
+  if (!sessionUserId) {
+    toast.error("Licitáláshoz be kell jelentkezni.");
+    return;
+  }
+
+  setMaxBidLoading(true);
+
+  try {
+    const { error } = await supabase.rpc("place_max_bid", {
+      p_listing_id: listingId,
+      p_max_amount: amount,
+    });
+
+    if (error) {
+      toast.error(error.message);
       return;
     }
-
-    const { n } = parseBidAmount(maxBidAmount);
-    const amount = n;
-
-    if (!sessionUserId) {
-      toast.error("Licitáláshoz be kell jelentkezni.");
-      return;
-    }
-
-    setMaxBidLoading(true);
 
     try {
-      const { error } = await supabase.rpc("place_max_bid", {
-        p_listing_id: listingId,
-        p_max_amount: amount,
-      });
+      const { data: latestBidRow, error: latestBidError } = await supabase
+        .from("bids")
+        .select("amount,user_id,created_at")
+        .eq("listing_id", listingId)
+        .order("amount", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-      if (error) {
-        toast.error(error.message);
-        return;
+      if (!latestBidError && latestBidRow?.user_id === sessionUserId) {
+        const notifyRes = await fetch("/api/notifications/new-bid", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            listingId,
+            bidderUserId: sessionUserId,
+            amount: Number(latestBidRow.amount),
+          }),
+        });
+
+        const notifyData = await notifyRes.json().catch(() => null);
+
+        if (!notifyRes.ok) {
+          console.error("Max bid notification error:", notifyData?.error || "Ismeretlen hiba");
+        }
       }
-
-      toast.success(
-        myMaxBidAmount !== null
-          ? "Maximum licit módosítva ✅"
-          : "Maximum licit sikeresen beállítva ✅"
-      );
-      setMaxBidAmount("");
-      setMaxBidTouched(false);
-      await loadListing();
-      await loadBids();
-      await loadCurrentLeader();
-      await loadMyMaxBid();
-    } finally {
-      setMaxBidLoading(false);
+    } catch (e) {
+      console.error("Max bid notification fetch error:", e);
     }
+
+    toast.success(
+      myMaxBidAmount !== null
+        ? "Maximum licit módosítva ✅"
+        : "Maximum licit sikeresen beállítva ✅"
+    );
+    setMaxBidAmount("");
+    setMaxBidTouched(false);
+    await loadListing();
+    await loadBids();
+    await loadCurrentLeader();
+    await loadMyMaxBid();
+  } finally {
+    setMaxBidLoading(false);
   }
+}
 
   async function deleteMaxBid() {
     if (!sessionUserId) {
