@@ -54,7 +54,9 @@ export async function POST(req: Request) {
 
     const { data: listing, error: listingError } = await supabase
       .from("listings")
-      .select("id,title,user_id,winner_user_id,final_price,buy_now_price,closed_at,is_active")
+      .select(
+        "id,title,user_id,winner_user_id,final_price,buy_now_price,closed_at,is_active"
+      )
       .eq("id", listingId)
       .single();
 
@@ -71,15 +73,15 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const isEnded =
-  listing.is_active === false || !!listing.closed_at;
 
-if (!isEnded) {
-  return Response.json(
-    { error: "A tranzakciós chat csak lezárt aukció után érhető el." },
-    { status: 400 }
-  );
-}
+    const isEnded = listing.is_active === false || !!listing.closed_at;
+
+    if (!isEnded) {
+      return Response.json(
+        { error: "A tranzakciós chat csak lezárt aukció után érhető el." },
+        { status: 400 }
+      );
+    }
 
     const isParticipant =
       user.id === listing.user_id || user.id === listing.winner_user_id;
@@ -93,6 +95,7 @@ if (!isEnded) {
 
     const sellerId = listing.user_id;
     const buyerId = listing.winner_user_id;
+    const nowIso = new Date().toISOString();
 
     const { data: existingThread, error: existingError } = await supabase
       .from("chat_threads")
@@ -121,18 +124,22 @@ if (!isEnded) {
 
       if (createThreadError || !createdThread) {
         return Response.json(
-          { error: createThreadError?.message || "Nem sikerült létrehozni a chat threadet." },
+          {
+            error:
+              createThreadError?.message ||
+              "Nem sikerült létrehozni a chat threadet.",
+          },
           { status: 500 }
         );
       }
 
       threadId = createdThread.id;
+    }
 
-            const nowIso = new Date().toISOString();
-
-      const { error: membersError } = await supabase
-        .from("chat_thread_members")
-        .insert([
+    const { error: membersError } = await supabase
+      .from("chat_thread_members")
+      .upsert(
+        [
           {
             thread_id: threadId,
             user_id: sellerId,
@@ -143,15 +150,37 @@ if (!isEnded) {
             user_id: buyerId,
             last_read_at: nowIso,
           },
-        ]);
+        ],
+        {
+          onConflict: "thread_id,user_id",
+        }
+      );
 
-      if (membersError) {
-        return Response.json(
-          { error: membersError.message || "Nem sikerült létrehozni a chat member sorokat." },
-          { status: 500 }
-        );
-      }
+    if (membersError) {
+      return Response.json(
+        {
+          error:
+            membersError.message ||
+            "Nem sikerült létrehozni a chat member sorokat.",
+        },
+        { status: 500 }
+      );
+    }
 
+    const { count: existingMessageCount, error: existingMessagesError } =
+      await supabase
+        .from("chat_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("thread_id", threadId);
+
+    if (existingMessagesError) {
+      return Response.json(
+        { error: existingMessagesError.message },
+        { status: 500 }
+      );
+    }
+
+    if ((existingMessageCount ?? 0) === 0) {
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id,full_name,email,phone,public_display_name")
@@ -172,26 +201,38 @@ if (!isEnded) {
       const formattedPrice =
         new Intl.NumberFormat("hu-HU").format(finalPrice) + " Ft";
 
-      await supabase.from("chat_messages").insert([
-        {
-          thread_id: threadId,
-          sender_id: sellerId,
-          message:
-            `✅ Sikeres tranzakció: ${listing.title}\nVégső ár: ${formattedPrice}`,
-        },
-        {
-          thread_id: threadId,
-          sender_id: sellerId,
-          message:
-            `🔐 Kapcsolattartási adatok\n\n` +
-            `Eladó: ${sellerName}\n` +
-            `Email: ${seller?.email ?? "Nincs megadva"}\n` +
-            `Telefon: ${seller?.phone ?? "Nincs megadva"}\n\n` +
-            `Vevő: ${buyerName}\n` +
-            `Email: ${buyer?.email ?? "Nincs megadva"}\n` +
-            `Telefon: ${buyer?.phone ?? "Nincs megadva"}`,
-        },
-      ]);
+      const { error: insertMessagesError } = await supabase
+        .from("chat_messages")
+        .insert([
+          {
+            thread_id: threadId,
+            sender_id: sellerId,
+            message: `✅ Sikeres tranzakció: ${listing.title}\nVégső ár: ${formattedPrice}`,
+          },
+          {
+            thread_id: threadId,
+            sender_id: sellerId,
+            message:
+              `🔐 Kapcsolattartási adatok\n\n` +
+              `Eladó: ${sellerName}\n` +
+              `Email: ${seller?.email ?? "Nincs megadva"}\n` +
+              `Telefon: ${seller?.phone ?? "Nincs megadva"}\n\n` +
+              `Vevő: ${buyerName}\n` +
+              `Email: ${buyer?.email ?? "Nincs megadva"}\n` +
+              `Telefon: ${buyer?.phone ?? "Nincs megadva"}`,
+          },
+        ]);
+
+      if (insertMessagesError) {
+        return Response.json(
+          {
+            error:
+              insertMessagesError.message ||
+              "Nem sikerült létrehozni a rendszerüzeneteket.",
+          },
+          { status: 500 }
+        );
+      }
     }
 
     return Response.json({ threadId });
