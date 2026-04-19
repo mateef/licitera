@@ -117,6 +117,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
+  const [referralCode, setReferralCode] = useState("");
 
   const [acceptedAdult, setAcceptedAdult] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -165,130 +166,166 @@ export default function LoginPage() {
   }
 
   async function signUp() {
-    setMsg("");
+  setMsg("");
 
-    if (!fullName.trim()) {
-      setMsg("Add meg a teljes neved.");
-      toast.error("Add meg a teljes neved.");
-      return;
-    }
-
-    if (!isValidPhoneForCountry(selectedCountry, phoneLocal.trim())) {
-      const text = `Adj meg érvényes telefonszámot. Példa: ${selectedCountry.dialCode} ${selectedCountry.placeholder}`;
-      setMsg(text);
-      toast.error("Adj meg érvényes telefonszámot.");
-      return;
-    }
-
-    if (!isValidEmail(email.trim())) {
-      setMsg("Adj meg érvényes e-mail címet.");
-      toast.error("Adj meg érvényes e-mail címet.");
-      return;
-    }
-
-    if (!isStrongEnoughPassword(password)) {
-      setMsg("A jelszó legyen legalább 8 karakter, tartalmazzon kisbetűt, nagybetűt és számot.");
-      toast.error("A jelszó nem elég erős.");
-      return;
-    }
-
-    if (password !== passwordAgain) {
-      setMsg("A két jelszó nem egyezik.");
-      toast.error("A két jelszó nem egyezik.");
-      return;
-    }
-
-    if (!acceptedAdult) {
-      setMsg("A regisztrációhoz nyilatkoznod kell arról, hogy elmúltál 18 éves.");
-      toast.error("Jelöld be a 18 év feletti nyilatkozatot.");
-      return;
-    }
-
-    if (!acceptedTerms) {
-      setMsg("A regisztrációhoz el kell fogadnod az ÁSZF-et.");
-      toast.error("Fogadd el az ÁSZF-et.");
-      return;
-    }
-
-    if (!acceptedPrivacy) {
-      setMsg("A regisztrációhoz tudomásul kell venned az Adatkezelési tájékoztatót.");
-      toast.error("Fogadd el az adatkezelési tájékoztatót.");
-      return;
-    }
-
-    setLoading("signup");
-
-    try {
-      await supabase.auth.signOut();
-
-      const normalizedEmail = email.trim().toLowerCase();
-      const normalizedPhone = buildFullPhone(selectedCountry.dialCode, phoneLocal.trim());
-
-      const { data, error } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
-      });
-
-      if (error) {
-        setMsg(error.message);
-        toast.error("Nem sikerült a regisztráció.");
-        return;
-      }
-
-      const userId = data.user?.id;
-
-      if (!userId) {
-        setMsg("Nem sikerült létrehozni a felhasználót.");
-        toast.error("Nem sikerült létrehozni a felhasználót.");
-        return;
-      }
-
-      const { error: profileError } = await supabase.from("profiles").upsert(
-        {
-          id: userId,
-          full_name: fullName.trim(),
-          phone: normalizedPhone,
-          email: normalizedEmail,
-          phone_verified: false,
-        },
-        {
-          onConflict: "id",
-        }
-      );
-
-      if (profileError) {
-        setMsg(profileError.message);
-        toast.error("Nem sikerült létrehozni a profilt.");
-        return;
-      }
-
-      const smsRes = await fetch("/api/send-verification-sms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          phone: normalizedPhone,
-        }),
-      });
-
-      const smsData = await smsRes.json().catch(() => null);
-
-      if (!smsRes.ok) {
-        setMsg(smsData?.error || "Nem sikerült elküldeni az SMS kódot.");
-        toast.error("Nem sikerült elküldeni az SMS kódot.");
-        return;
-      }
-
-      setPendingUserId(userId);
-      setPendingPhone(normalizedPhone);
-      setStep("verify");
-      setMsg("SMS kód elküldve. Add meg a telefonodra kapott kódot.");
-      toast.success("SMS kód elküldve.");
-    } finally {
-      setLoading(null);
-    }
+  if (!fullName.trim()) {
+    setMsg("Add meg a teljes neved.");
+    toast.error("Add meg a teljes neved.");
+    return;
   }
+
+  if (!isValidPhoneForCountry(selectedCountry, phoneLocal.trim())) {
+    const text = `Adj meg érvényes telefonszámot. Példa: ${selectedCountry.dialCode} ${selectedCountry.placeholder}`;
+    setMsg(text);
+    toast.error("Adj meg érvényes telefonszámot.");
+    return;
+  }
+
+  if (!isValidEmail(email.trim())) {
+    setMsg("Adj meg érvényes e-mail címet.");
+    toast.error("Adj meg érvényes e-mail címet.");
+    return;
+  }
+
+  if (!isStrongEnoughPassword(password)) {
+    setMsg("A jelszó legyen legalább 8 karakter, tartalmazzon kisbetűt, nagybetűt és számot.");
+    toast.error("A jelszó nem elég erős.");
+    return;
+  }
+
+  if (password !== passwordAgain) {
+    setMsg("A két jelszó nem egyezik.");
+    toast.error("A két jelszó nem egyezik.");
+    return;
+  }
+
+  if (!acceptedAdult) {
+    setMsg("A regisztrációhoz nyilatkoznod kell arról, hogy elmúltál 18 éves.");
+    toast.error("Jelöld be a 18 év feletti nyilatkozatot.");
+    return;
+  }
+
+  if (!acceptedTerms) {
+    setMsg("A regisztrációhoz el kell fogadnod az ÁSZF-et.");
+    toast.error("Fogadd el az ÁSZF-et.");
+    return;
+  }
+
+  if (!acceptedPrivacy) {
+    setMsg("A regisztrációhoz tudomásul kell venned az Adatkezelési tájékoztatót.");
+    toast.error("Fogadd el az adatkezelési tájékoztatót.");
+    return;
+  }
+
+  const normalizedReferralCode = referralCode.trim().toUpperCase();
+
+  setLoading("signup");
+
+  try {
+    if (normalizedReferralCode) {
+      const {
+        data: referralIsValid,
+        error: referralValidateError,
+      } = await supabase.rpc("validate_referral_code", {
+        p_code: normalizedReferralCode,
+      });
+
+      if (referralValidateError) {
+        setMsg(referralValidateError.message);
+        toast.error("Nem sikerült ellenőrizni a meghívókódot.");
+        return;
+      }
+
+      if (!referralIsValid) {
+        setMsg("A megadott meghívókód érvénytelen.");
+        toast.error("Érvénytelen meghívókód.");
+        return;
+      }
+    }
+
+    await supabase.auth.signOut();
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = buildFullPhone(selectedCountry.dialCode, phoneLocal.trim());
+
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (error) {
+      setMsg(error.message);
+      toast.error("Nem sikerült a regisztráció.");
+      return;
+    }
+
+    const userId = data.user?.id;
+
+    if (!userId) {
+      setMsg("Nem sikerült létrehozni a felhasználót.");
+      toast.error("Nem sikerült létrehozni a felhasználót.");
+      return;
+    }
+
+    const { error: profileError } = await supabase.from("profiles").upsert(
+      {
+        id: userId,
+        full_name: fullName.trim(),
+        phone: normalizedPhone,
+        email: normalizedEmail,
+        phone_verified: false,
+      },
+      {
+        onConflict: "id",
+      }
+    );
+
+    if (profileError) {
+      setMsg(profileError.message);
+      toast.error("Nem sikerült létrehozni a profilt.");
+      return;
+    }
+
+    if (normalizedReferralCode) {
+      const { error: claimReferralError } = await supabase.rpc("claim_referral_code", {
+        p_invited_user_id: userId,
+        p_code: normalizedReferralCode,
+      });
+
+      if (claimReferralError) {
+        setMsg(claimReferralError.message);
+        toast.error("Nem sikerült rögzíteni a meghívókódot.");
+        return;
+      }
+    }
+
+    const smsRes = await fetch("/api/send-verification-sms", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        phone: normalizedPhone,
+      }),
+    });
+
+    const smsData = await smsRes.json().catch(() => null);
+
+    if (!smsRes.ok) {
+      setMsg(smsData?.error || "Nem sikerült elküldeni az SMS kódot.");
+      toast.error("Nem sikerült elküldeni az SMS kódot.");
+      return;
+    }
+
+    setPendingUserId(userId);
+    setPendingPhone(normalizedPhone);
+    setStep("verify");
+    setMsg("SMS kód elküldve. Add meg a telefonodra kapott kódot.");
+    toast.success("SMS kód elküldve.");
+  } finally {
+    setLoading(null);
+  }
+}
 
   async function verifySms() {
     setMsg("");
@@ -745,7 +782,24 @@ export default function LoginPage() {
                       <span className="font-semibold text-slate-900">{fullPhonePreview}</span>
                     </div>
                   </div>
-
+                  <div className="space-y-2">
+  <label className="text-sm font-semibold text-slate-700">
+    Meghívókód <span className="text-slate-400">(opcionális)</span>
+  </label>
+  <div className="relative">
+    <BadgeCheck className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+    <Input
+      placeholder="Pl. LIC586E3A05"
+      value={referralCode}
+      onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+      autoCapitalize="characters"
+      className="h-12 rounded-2xl border-slate-200 pl-11"
+    />
+  </div>
+  <div className="text-xs text-slate-500">
+    Ha egy ismerősöd hívott meg, add meg itt a kódját.
+  </div>
+</div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">E-mail cím</label>
                     <div className="relative">
