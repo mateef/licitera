@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,27 @@ function formatDateTime(value: string | null | undefined) {
   return new Date(value).toLocaleString("hu-HU");
 }
 
+function getStatusLabel(status: string | null | undefined) {
+  switch ((status ?? "").toLowerCase()) {
+    case "rewarded":
+      return "Jutalmazva";
+    case "qualified":
+      return "Teljesítve";
+    case "pending":
+      return "Folyamatban";
+    case "invalid":
+      return "Érvénytelen";
+    default:
+      return status || "—";
+  }
+}
+
+function getDisplayName(row: ReferralDashboardRow) {
+  if (row.invited_full_name?.trim()) return row.invited_full_name.trim();
+  if (row.invited_email?.trim()) return row.invited_email.trim();
+  return "Meghívott felhasználó";
+}
+
 function Condition({
   done,
   children,
@@ -82,7 +103,7 @@ export default function ReferralsPage() {
         toast.error(summaryRes.error.message);
       } else {
         const row = Array.isArray(summaryRes.data)
-          ? (summaryRes.data[0] as ReferralSummaryRow | undefined) ?? null
+          ? ((summaryRes.data[0] as ReferralSummaryRow | undefined) ?? null)
           : null;
 
         setSummary(row);
@@ -99,6 +120,12 @@ export default function ReferralsPage() {
 
     load();
   }, []);
+
+  const inviteLink = useMemo(() => {
+    const code = summary?.referral_code?.trim();
+    if (!code) return "";
+    return `https://licitera.hu/register?ref=${encodeURIComponent(code)}`;
+  }, [summary?.referral_code]);
 
   if (loading) {
     return (
@@ -150,6 +177,11 @@ export default function ReferralsPage() {
               {summary?.referral_code ?? "—"}
             </div>
 
+            <div className="mt-2 text-sm leading-6 text-slate-500">
+              Minden sikeres meghívott után 3 nap Pro előnyt kapsz. Maximum 10 jutalmazott
+              meghívás számít bele, tehát összesen legfeljebb 30 nap Pro gyűjthető össze.
+            </div>
+
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 variant="outline"
@@ -164,14 +196,29 @@ export default function ReferralsPage() {
               </Button>
 
               <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!inviteLink) return;
+                  await navigator.clipboard.writeText(inviteLink);
+                  toast.success("A meghívólink kimásolva.");
+                }}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Link másolása
+              </Button>
+
+              <Button
                 onClick={async () => {
                   if (!summary?.referral_code) return;
-                  const text = `Csatlakozz a Liciterához az én meghívókódommal: ${summary.referral_code}`;
+
+                  const text =
+                    `Regisztrálj a Liciterára az én meghívókódommal: ${summary.referral_code}\n\n` +
+                    `Meghívólink: ${inviteLink}`;
+
                   await navigator.clipboard.writeText(text);
                   toast.success("A meghívó szöveg kimásolva.");
                 }}
               >
-                <Sparkles className="mr-2 h-4 w-4" />
                 Meghívó szöveg másolása
               </Button>
             </div>
@@ -188,7 +235,7 @@ export default function ReferralsPage() {
             <div className="rounded-2xl border bg-slate-50 p-4">
               <div className="text-sm text-slate-500">Jutalmazott meghívások</div>
               <div className="mt-2 text-2xl font-bold text-slate-900">
-                {summary?.total_rewarded ?? 0}
+                {summary?.total_rewarded ?? 0} / 10
               </div>
             </div>
 
@@ -206,6 +253,9 @@ export default function ReferralsPage() {
               <Condition done={false}>1. Regisztráció meghívókóddal</Condition>
               <Condition done={false}>2. Telefonszám hitelesítése</Condition>
               <Condition done={false}>3. Első licit vagy első hirdetésfeladás</Condition>
+            </div>
+            <div className="mt-3 text-indigo-800/90">
+              Egy teljesített meghívás 3 nap Pro előnyt ad.
             </div>
           </div>
         </CardContent>
@@ -233,14 +283,14 @@ export default function ReferralsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-900">
-                        {row.invited_full_name || row.invited_email || "Meghívott felhasználó"}
+                        {getDisplayName(row)}
                       </div>
                       <div className="mt-1 text-sm text-slate-500">
                         Regisztrált: {formatDateTime(row.created_at)}
                       </div>
                     </div>
 
-                    <Badge variant="secondary">{row.status}</Badge>
+                    <Badge variant="secondary">{getStatusLabel(row.status)}</Badge>
                   </div>
 
                   <div className="mt-4 grid gap-2">
@@ -249,13 +299,20 @@ export default function ReferralsPage() {
                     <Condition done={didAction}>
                       Első licit vagy első hirdetésfeladás megtörtént
                     </Condition>
-                    <Condition done={rewarded}>Jutalom jóváírva</Condition>
+                    <Condition done={rewarded}>3 nap Pro jutalom jóváírva</Condition>
                   </div>
 
                   <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
                     <div>Első licit: {formatDateTime(row.first_bid_at)}</div>
-                    <div className="mt-1">Első hirdetés: {formatDateTime(row.first_listing_at)}</div>
-                    <div className="mt-1">Jutalom lejárata: {formatDateTime(row.reward_ends_at)}</div>
+                    <div className="mt-1">
+                      Első hirdetés: {formatDateTime(row.first_listing_at)}
+                    </div>
+                    <div className="mt-1">
+                      Jutalom jóváírása: {formatDateTime(row.reward_granted_at)}
+                    </div>
+                    <div className="mt-1">
+                      Jutalom lejárata: {formatDateTime(row.reward_ends_at)}
+                    </div>
                   </div>
                 </div>
               );

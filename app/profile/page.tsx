@@ -13,7 +13,6 @@ import {
   BadgeCheck,
   ExternalLink,
   Phone,
-  Sparkles,
   Copy,
   Gift,
   Users,
@@ -23,6 +22,8 @@ import {
   ArrowRight,
   Trash2,
   AlertTriangle,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 
 type ProfileRow = {
@@ -82,20 +83,61 @@ type ReferralDashboardRow = {
   created_at: string;
 };
 
-const [referralSummary, setReferralSummary] = useState<ReferralSummaryRow | null>(null);
-const [referralDashboard, setReferralDashboard] = useState<ReferralDashboardRow[]>([]);
-
 const SUBSCRIPTION_LABELS: Record<SubscriptionTier, string> = {
   free: "Ingyenes",
   standard: "Standard",
   pro: "Pro",
 };
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("hu-HU");
+}
+
+function getReferralStatusLabel(status: string | null | undefined) {
+  switch ((status ?? "").toLowerCase()) {
+    case "rewarded":
+      return "Jutalmazva";
+    case "qualified":
+      return "Teljesítve";
+    case "pending":
+      return "Folyamatban";
+    case "invalid":
+      return "Érvénytelen";
+    default:
+      return status || "—";
+  }
+}
+
+function Condition({
+  done,
+  children,
+}: {
+  done: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      {done ? (
+        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+      ) : (
+        <Circle className="h-4 w-4 text-slate-300" />
+      )}
+      <span className={done ? "font-medium text-emerald-700" : "text-slate-600"}>
+        {children}
+      </span>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [referralSummary, setReferralSummary] = useState<ReferralSummaryRow | null>(null);
+  const [referralDashboard, setReferralDashboard] = useState<ReferralDashboardRow[]>([]);
 
   const [sendingSms, setSendingSms] = useState(false);
   const [verifyingSms, setVerifyingSms] = useState(false);
@@ -148,6 +190,12 @@ export default function ProfilePage() {
     return new Intl.NumberFormat("hu-HU").format(value) + " Ft";
   }
 
+  function getInviteDisplayName(row: ReferralDashboardRow) {
+    return row.invited_full_name?.trim() || row.invited_email?.trim() || "Meghívott felhasználó";
+  }
+
+  const invitePreviewRows = useMemo(() => referralDashboard.slice(0, 3), [referralDashboard]);
+
   async function loadProfile(uid: string) {
     const { data: sessionData } = await supabase.auth.getSession();
 
@@ -175,23 +223,22 @@ export default function ProfilePage() {
   }
 
   async function loadReferralData() {
-  const [summaryRes, dashboardRes] = await Promise.all([
-    supabase.rpc("get_my_referral_summary"),
-    supabase.rpc("get_my_referral_dashboard"),
-  ]);
+    const [summaryRes, dashboardRes] = await Promise.all([
+      supabase.rpc("get_my_referral_summary"),
+      supabase.rpc("get_my_referral_dashboard"),
+    ]);
 
-  if (!summaryRes.error) {
-    const row = Array.isArray(summaryRes.data)
-      ? (summaryRes.data[0] as ReferralSummaryRow | undefined) ?? null
-      : null;
+    if (!summaryRes.error) {
+      const row = Array.isArray(summaryRes.data)
+        ? (summaryRes.data[0] as ReferralSummaryRow | undefined) ?? null
+        : null;
+      setReferralSummary(row);
+    }
 
-    setReferralSummary(row);
+    if (!dashboardRes.error) {
+      setReferralDashboard((dashboardRes.data ?? []) as ReferralDashboardRow[]);
+    }
   }
-
-  if (!dashboardRes.error) {
-    setReferralDashboard((dashboardRes.data ?? []) as ReferralDashboardRow[]);
-  }
-}
 
   async function loadBillingSummary(uid: string) {
     const monthStart = new Date();
@@ -495,6 +542,7 @@ export default function ProfilePage() {
       setSmsCode("");
       setMsg("Telefonszám sikeresen hitelesítve.");
       toast.success("Telefonszám hitelesítve.");
+      await loadReferralData();
     } finally {
       setVerifyingSms(false);
     }
@@ -876,78 +924,124 @@ export default function ProfilePage() {
       </div>
 
       <Card className="rounded-[1.75rem] border-slate-200/80">
-  <CardHeader>
-    <CardTitle>Meghívások és jutalmak</CardTitle>
-  </CardHeader>
+        <CardHeader>
+          <CardTitle>Meghívások és jutalmak</CardTitle>
+        </CardHeader>
 
-  <CardContent className="space-y-4">
-    <div className="rounded-2xl border bg-slate-50 p-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-        <Gift className="h-4 w-4" />
-        Saját meghívókód
-      </div>
+        <CardContent className="space-y-5">
+          <div className="rounded-2xl border bg-slate-50 p-5">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+              <Gift className="h-4 w-4" />
+              Saját meghívókód
+            </div>
 
-      <div className="mt-3 text-2xl font-black tracking-tight text-slate-900">
-        {referralSummary?.referral_code ?? "—"}
-      </div>
+            <div className="mt-3 text-2xl font-black tracking-tight text-slate-900">
+              {referralSummary?.referral_code ?? "—"}
+            </div>
 
-      <div className="mt-2 text-sm text-slate-500">
-        Ha valaki ezzel regisztrál, hitelesíti a telefonszámát, és licitál vagy hirdetést ad fel,
-        akkor jutalmat kapsz.
-      </div>
+            <div className="mt-2 text-sm text-slate-500">
+              Minden sikeresen teljesítő meghívott után 3 nap Pro előnyt kapsz. Maximum 10
+              jutalmazott meghívás számít bele, összesen 30 napig.
+            </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={async () => {
-            if (!referralSummary?.referral_code) return;
-            await navigator.clipboard.writeText(referralSummary.referral_code);
-            toast.success("Meghívókód kimásolva.");
-          }}
-        >
-          <Copy className="mr-2 h-4 w-4" />
-          Kód másolása
-        </Button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  if (!referralSummary?.referral_code) return;
+                  await navigator.clipboard.writeText(referralSummary.referral_code);
+                  toast.success("Meghívókód kimásolva.");
+                }}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Kód másolása
+              </Button>
 
-        <Button asChild>
-          <Link href="/referrals">Részletek megnyitása</Link>
-        </Button>
-      </div>
-    </div>
+              <Button asChild>
+                <Link href="/referrals">Részletek megnyitása</Link>
+              </Button>
+            </div>
+          </div>
 
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div className="rounded-2xl border bg-slate-50 p-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Users className="h-4 w-4" />
-          Összes meghívott
-        </div>
-        <div className="mt-2 text-xl font-bold text-slate-900">
-          {referralSummary?.total_invites ?? 0}
-        </div>
-      </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Users className="h-4 w-4" />
+                Összes meghívott
+              </div>
+              <div className="mt-2 text-xl font-bold text-slate-900">
+                {referralSummary?.total_invites ?? 0}
+              </div>
+            </div>
 
-      <div className="rounded-2xl border bg-slate-50 p-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Gift className="h-4 w-4" />
-          Jutalmazott meghívások
-        </div>
-        <div className="mt-2 text-xl font-bold text-slate-900">
-          {referralSummary?.total_rewarded ?? 0}
-        </div>
-      </div>
-    </div>
+            <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Gift className="h-4 w-4" />
+                Jutalmazott meghívások
+              </div>
+              <div className="mt-2 text-xl font-bold text-slate-900">
+                {referralSummary?.total_rewarded ?? 0} / 10
+              </div>
+            </div>
 
-    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
-      Aktív Pro előny lejárata:{" "}
-      <span className="font-semibold">
-        {referralSummary?.active_pro_campaign_until
-          ? new Date(referralSummary.active_pro_campaign_until).toLocaleString("hu-HU")
-          : "nincs aktív jutalom"}
-      </span>
-    </div>
-  </CardContent>
-</Card>
+            <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="text-sm text-slate-500">Aktív Pro előny lejárata</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">
+                {formatDateTime(referralSummary?.active_pro_campaign_until)}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+            <div className="font-semibold">Jutalom feltételei</div>
+            <div className="mt-2 space-y-2">
+              <Condition done={false}>1. Regisztráció meghívókóddal</Condition>
+              <Condition done={false}>2. Telefonszám hitelesítése</Condition>
+              <Condition done={false}>3. Első licit vagy első hirdetésfeladás</Condition>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-slate-900">Legutóbbi meghívottak</div>
+
+            {invitePreviewRows.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+                Még nincs meghívott felhasználód.
+              </div>
+            ) : (
+              invitePreviewRows.map((row) => {
+                const didAction = !!row.first_bid_at || !!row.first_listing_at;
+                const rewarded = !!row.reward_granted_at;
+
+                return (
+                  <div key={row.invite_id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          {getInviteDisplayName(row)}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          Regisztrált: {formatDateTime(row.created_at)}
+                        </div>
+                      </div>
+
+                      <Badge variant="secondary">{getReferralStatusLabel(row.status)}</Badge>
+                    </div>
+
+                    <div className="mt-4 grid gap-2">
+                      <Condition done={true}>Regisztráció kész</Condition>
+                      <Condition done={!!row.phone_verified}>Telefonszám hitelesítve</Condition>
+                      <Condition done={didAction}>Első licit vagy első hirdetésfeladás megtörtént</Condition>
+                      <Condition done={rewarded}>3 nap Pro jutalom jóváírva</Condition>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="rounded-[1.75rem] border-red-200 bg-red-50/60 shadow-sm">
         <CardHeader>
