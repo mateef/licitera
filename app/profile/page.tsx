@@ -14,6 +14,9 @@ import {
   ExternalLink,
   Phone,
   Sparkles,
+  Copy,
+  Gift,
+  Users,
   Star,
   UserRound,
   Wallet,
@@ -56,6 +59,31 @@ type ReviewRow = {
 };
 
 type SubscriptionTier = "free" | "standard" | "pro";
+
+type ReferralSummaryRow = {
+  referral_code: string;
+  total_invites: number;
+  total_rewarded: number;
+  active_pro_campaign_until: string | null;
+};
+
+type ReferralDashboardRow = {
+  invite_id: string;
+  invited_user_id: string;
+  invited_email: string | null;
+  invited_full_name: string | null;
+  phone_verified: boolean;
+  first_bid_at: string | null;
+  first_listing_at: string | null;
+  qualified_at: string | null;
+  reward_granted_at: string | null;
+  reward_ends_at: string | null;
+  status: string;
+  created_at: string;
+};
+
+const [referralSummary, setReferralSummary] = useState<ReferralSummaryRow | null>(null);
+const [referralDashboard, setReferralDashboard] = useState<ReferralDashboardRow[]>([]);
 
 const SUBSCRIPTION_LABELS: Record<SubscriptionTier, string> = {
   free: "Ingyenes",
@@ -145,6 +173,25 @@ export default function ProfilePage() {
     setSubscriptionTier((profile?.subscription_tier as SubscriptionTier | null) ?? "free");
     setSubscriptionStatus(profile?.subscription_status ?? "active");
   }
+
+  async function loadReferralData() {
+  const [summaryRes, dashboardRes] = await Promise.all([
+    supabase.rpc("get_my_referral_summary"),
+    supabase.rpc("get_my_referral_dashboard"),
+  ]);
+
+  if (!summaryRes.error) {
+    const row = Array.isArray(summaryRes.data)
+      ? (summaryRes.data[0] as ReferralSummaryRow | undefined) ?? null
+      : null;
+
+    setReferralSummary(row);
+  }
+
+  if (!dashboardRes.error) {
+    setReferralDashboard((dashboardRes.data ?? []) as ReferralDashboardRow[]);
+  }
+}
 
   async function loadBillingSummary(uid: string) {
     const monthStart = new Date();
@@ -292,6 +339,7 @@ export default function ProfilePage() {
       loadBillingSummary(uid),
       loadPendingReviews(uid),
       loadReviews(uid),
+      loadReferralData(),
     ]);
 
     setLoading(false);
@@ -826,6 +874,80 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-[1.75rem] border-slate-200/80">
+  <CardHeader>
+    <CardTitle>Meghívások és jutalmak</CardTitle>
+  </CardHeader>
+
+  <CardContent className="space-y-4">
+    <div className="rounded-2xl border bg-slate-50 p-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+        <Gift className="h-4 w-4" />
+        Saját meghívókód
+      </div>
+
+      <div className="mt-3 text-2xl font-black tracking-tight text-slate-900">
+        {referralSummary?.referral_code ?? "—"}
+      </div>
+
+      <div className="mt-2 text-sm text-slate-500">
+        Ha valaki ezzel regisztrál, hitelesíti a telefonszámát, és licitál vagy hirdetést ad fel,
+        akkor jutalmat kapsz.
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={async () => {
+            if (!referralSummary?.referral_code) return;
+            await navigator.clipboard.writeText(referralSummary.referral_code);
+            toast.success("Meghívókód kimásolva.");
+          }}
+        >
+          <Copy className="mr-2 h-4 w-4" />
+          Kód másolása
+        </Button>
+
+        <Button asChild>
+          <Link href="/referrals">Részletek megnyitása</Link>
+        </Button>
+      </div>
+    </div>
+
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div className="rounded-2xl border bg-slate-50 p-4">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Users className="h-4 w-4" />
+          Összes meghívott
+        </div>
+        <div className="mt-2 text-xl font-bold text-slate-900">
+          {referralSummary?.total_invites ?? 0}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-slate-50 p-4">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Gift className="h-4 w-4" />
+          Jutalmazott meghívások
+        </div>
+        <div className="mt-2 text-xl font-bold text-slate-900">
+          {referralSummary?.total_rewarded ?? 0}
+        </div>
+      </div>
+    </div>
+
+    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+      Aktív Pro előny lejárata:{" "}
+      <span className="font-semibold">
+        {referralSummary?.active_pro_campaign_until
+          ? new Date(referralSummary.active_pro_campaign_until).toLocaleString("hu-HU")
+          : "nincs aktív jutalom"}
+      </span>
+    </div>
+  </CardContent>
+</Card>
 
       <Card className="rounded-[1.75rem] border-red-200 bg-red-50/60 shadow-sm">
         <CardHeader>
