@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "VT3W873S65.com.mateef.liciteramobile"
+        ],
+        "paths": [
+          "/listing/*"
+        ]
+      }
+    ]
+  }
+}

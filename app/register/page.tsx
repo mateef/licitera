@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,8 @@ function CheckboxRow({
 }
 
 export default function RegisterPage() {
+  const searchParams = useSearchParams();
+
   const [step, setStep] = useState<Step>("auth");
 
   const [fullName, setFullName] = useState("");
@@ -121,6 +124,14 @@ export default function RegisterPage() {
     if (!normalized) return `${selectedCountry.flag} ${selectedCountry.dialCode}`;
     return `${selectedCountry.flag} ${buildFullPhone(selectedCountry.dialCode, normalized)}`;
   }, [phoneLocal, selectedCountry]);
+
+    useEffect(() => {
+    const ref = searchParams.get("ref")?.trim().toUpperCase() ?? "";
+
+    if (ref) {
+      setReferralCode(ref);
+    }
+  }, [searchParams]);
 
   function isValidEmail(value: string) {
     return /\S+@\S+\.\S+/.test(value);

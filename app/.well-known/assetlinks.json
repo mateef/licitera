@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mateef.liciteramobile",
+      "sha256_cert_fingerprints": [
+        "14:00:20:DF:24:8D:CA:F8:90:CF:91:52:28:74:B6:0D:2A:22:DE:48:4F:80:90:4F:84:E6:BA:FC:7C:16:1A:66"
+      ]
+    }
+  }
+]
