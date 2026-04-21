@@ -7,6 +7,10 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type PushTokenRow = {
+  expo_push_token: string | null;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -16,31 +20,53 @@ export async function POST(req: Request) {
     const message = String(body?.message || "").trim();
     const data = body?.data ?? {};
 
-    if (!userId || !title || !message) {
+    const sendToAll =
+      body?.sendToAll === true ||
+      body?.allUsers === true ||
+      String(body?.target || "").trim().toLowerCase() === "all";
+
+    if (!title || !message) {
       return NextResponse.json(
-        { error: "Hiányzó userId, title vagy message." },
+        { error: "Hiányzó title vagy message." },
         { status: 400 }
       );
     }
 
-    const { data: tokenRows, error: tokenError } = await admin
+    if (!sendToAll && !userId) {
+      return NextResponse.json(
+        { error: "Hiányzó userId. Ha mindenkinek küldenéd, add át a sendToAll: true mezőt." },
+        { status: 400 }
+      );
+    }
+
+    let query = admin
       .from("push_tokens")
       .select("expo_push_token")
-      .eq("user_id", userId)
       .eq("is_active", true);
+
+    if (!sendToAll) {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data: tokenRows, error: tokenError } = await query;
 
     if (tokenError) {
       return NextResponse.json({ error: tokenError.message }, { status: 500 });
     }
 
-    const pushTokens = (tokenRows ?? [])
-      .map((row: any) => String(row?.expo_push_token || "").trim())
-      .filter(Boolean);
+    const pushTokens = Array.from(
+      new Set(
+        ((tokenRows ?? []) as PushTokenRow[])
+          .map((row) => String(row?.expo_push_token || "").trim())
+          .filter(Boolean)
+      )
+    );
 
     if (pushTokens.length === 0) {
       return NextResponse.json({
         ok: true,
         sent: 0,
+        target: sendToAll ? "all" : userId,
         reason: "Nincs aktív push token.",
       });
     }
@@ -64,6 +90,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      target: sendToAll ? "all" : userId,
+      requested_tokens: pushTokens.length,
       sent: result.sent,
       invalidated: result.invalidTokens.length,
       tickets: result.tickets,
